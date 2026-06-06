@@ -1,4 +1,5 @@
 import CodeMirror from "@uiw/react-codemirror";
+import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import clsx from "clsx";
@@ -21,6 +22,8 @@ import { createProgram, duplicateProgram, loadPrograms, savePrograms } from "./p
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
 type ProgramStatus = { errors: number };
+type BottomTab = "assembly" | "events";
+type RightTab = "inspector" | "registers" | "memory";
 
 export function App() {
   const [programs, setPrograms] = useState<ProgramDocument[]>(() => loadPrograms());
@@ -30,6 +33,8 @@ export function App() {
   const [simulation, setSimulation] = useState<SimulationState>(() => createSimulation([]));
   const [simSource, setSimSource] = useState("");
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
+  const [bottomTab, setBottomTab] = useState<BottomTab>("assembly");
+  const [rightTab, setRightTab] = useState<RightTab>("inspector");
   const [lintCount, setLintCount] = useState(0);
   const invalidated = simSource !== selectedProgram?.source && simulation.current.cycle > 0;
 
@@ -42,6 +47,7 @@ export function App() {
     : null;
   const selectedSnapshot = selectedCell ? snapshots.find((snapshot) => snapshot.cycle === selectedCell.cycle) : undefined;
   const selectedEvents = selectedSnapshot?.events.filter((event) => event.instructionId === selectedCell?.instructionId) ?? [];
+  const activeEventSnapshot = selectedSnapshot ?? simulation.current;
   const editorExtensions = useMemo(
     () => [...assemblyExtensions(setLintCount), EditorView.contentAttributes.of({ "aria-label": "Assembly source" })],
     [],
@@ -158,28 +164,24 @@ export function App() {
                 selectedCell={selectedCell}
                 onSelect={setSelectedCell}
               />
-              <EventStrip snapshot={simulation.current} />
             </section>
-            <section className="editor-shell">
-              <div className="pane-header">
-                <span>Assembly</span>
-                <div className="header-status">
-                  {invalidated && <span className="mini-status warn">modified after run</span>}
-                  <span className={clsx("mini-status", lintCount > 0 && "bad")}>{lintCount} errors</span>
-                </div>
-              </div>
-              <CodeMirror
-                value={selectedProgram.source}
-                height="100%"
-                basicSetup={{ foldGutter: false, highlightActiveLine: true }}
-                extensions={editorExtensions}
-                onChange={(value) => updateProgram({ source: value })}
-              />
-            </section>
+            <BottomDrawer
+              activeTab={bottomTab}
+              onTabChange={setBottomTab}
+              snapshot={activeEventSnapshot}
+              selectedCell={selectedCell}
+              invalidated={invalidated}
+              lintCount={lintCount}
+              source={selectedProgram.source}
+              editorExtensions={editorExtensions}
+              onSourceChange={(value) => updateProgram({ source: value })}
+            />
           </section>
 
           <aside className="right-pane">
-            <Inspector
+            <RightDock
+              activeTab={rightTab}
+              onTabChange={setRightTab}
               selectedInstruction={selectedInstruction}
               selectedSnapshot={selectedSnapshot}
               selectedEvents={selectedEvents}
@@ -374,6 +376,126 @@ function ToolbarButton({
   );
 }
 
+function TabButton<T extends string>({
+  id,
+  active,
+  onSelect,
+  children,
+}: {
+  id: T;
+  active: boolean;
+  onSelect: (id: T) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button className={clsx("tab-button", active && "active")} type="button" onClick={() => onSelect(id)}>
+      {children}
+    </button>
+  );
+}
+
+function BottomDrawer({
+  activeTab,
+  onTabChange,
+  snapshot,
+  selectedCell,
+  invalidated,
+  lintCount,
+  source,
+  editorExtensions,
+  onSourceChange,
+}: {
+  activeTab: BottomTab;
+  onTabChange: (tab: BottomTab) => void;
+  snapshot: CycleSnapshot;
+  selectedCell: SelectedCell | null;
+  invalidated: boolean;
+  lintCount: number;
+  source: string;
+  editorExtensions: Extension[];
+  onSourceChange: (value: string) => void;
+}) {
+  return (
+    <section className="bottom-drawer">
+      <div className="tab-bar">
+        <div className="tab-list" role="tablist" aria-label="Bottom drawer">
+          <TabButton id="assembly" active={activeTab === "assembly"} onSelect={onTabChange}>
+            Assembly
+          </TabButton>
+          <TabButton id="events" active={activeTab === "events"} onSelect={onTabChange}>
+            Events
+          </TabButton>
+        </div>
+        <div className="header-status">
+          {activeTab === "assembly" && invalidated && <span className="mini-status warn">modified after run</span>}
+          {activeTab === "assembly" && <span className={clsx("mini-status", lintCount > 0 && "bad")}>{lintCount} errors</span>}
+          {activeTab === "events" && (
+            <span className="mini-status">{selectedCell ? `selected cycle ${snapshot.cycle}` : `cycle ${snapshot.cycle}`}</span>
+          )}
+        </div>
+      </div>
+      <div className="drawer-body">
+        {activeTab === "assembly" ? (
+          <CodeMirror
+            value={source}
+            height="100%"
+            basicSetup={{ foldGutter: false, highlightActiveLine: true }}
+            extensions={editorExtensions}
+            onChange={onSourceChange}
+          />
+        ) : (
+          <EventList events={snapshot.events} emptyText="No events in this cycle." />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function RightDock({
+  activeTab,
+  onTabChange,
+  selectedInstruction,
+  selectedSnapshot,
+  selectedEvents,
+  current,
+}: {
+  activeTab: RightTab;
+  onTabChange: (tab: RightTab) => void;
+  selectedInstruction: ReturnType<typeof assemble>["instructions"][number] | null | undefined;
+  selectedSnapshot: CycleSnapshot | undefined;
+  selectedEvents: PipelineEvent[];
+  current: CycleSnapshot;
+}) {
+  return (
+    <section className="right-dock">
+      <div className="tab-bar">
+        <div className="tab-list" role="tablist" aria-label="Inspector dock">
+          <TabButton id="inspector" active={activeTab === "inspector"} onSelect={onTabChange}>
+            Inspector
+          </TabButton>
+          <TabButton id="registers" active={activeTab === "registers"} onSelect={onTabChange}>
+            Registers
+          </TabButton>
+          <TabButton id="memory" active={activeTab === "memory"} onSelect={onTabChange}>
+            Memory
+          </TabButton>
+        </div>
+      </div>
+      <div className="dock-body">
+        {activeTab === "inspector" && (
+          <InspectorPanel
+            selectedInstruction={selectedInstruction}
+            selectedSnapshot={selectedSnapshot}
+            selectedEvents={selectedEvents}
+          />
+        )}
+        {activeTab === "registers" && <RegistersPanel current={current} />}
+        {activeTab === "memory" && <MemoryPanel current={current} />}
+      </div>
+    </section>
+  );
+}
+
 function StageBoard({ snapshot }: { snapshot: CycleSnapshot }) {
   return (
     <section className="stage-board">
@@ -442,7 +564,7 @@ function Timeline({
                   onClick={() => onSelect({ cycle, instructionId: instruction.id })}
                 >
                   <span>{cell?.stage ?? ""}</span>
-                  <EventBadges events={cell?.events ?? []} />
+                  <EventMarkers events={cell?.events ?? []} />
                 </button>
               );
             })}
@@ -453,101 +575,110 @@ function Timeline({
   );
 }
 
-function EventBadges({ events }: { events: PipelineEvent[] }) {
+function EventMarkers({ events }: { events: PipelineEvent[] }) {
+  const visibleEvents = events.slice(0, 2);
+  const hiddenCount = Math.max(0, events.length - visibleEvents.length);
   return (
-    <span className="event-badges">
-      {events.map((event) => (
-        <span className={clsx("event-badge", event.kind)} key={event.id}>
-          {event.label}
-        </span>
+    <span className="event-markers" aria-label={events.map((event) => event.label).join(", ")}>
+      {visibleEvents.map((event) => (
+        <span className={clsx("event-marker", event.kind)} key={event.id} title={`${event.label}: ${event.message}`} />
       ))}
+      {hiddenCount > 0 && <span className="event-marker more" title={`${hiddenCount} more events`} />}
     </span>
   );
 }
 
-function EventStrip({ snapshot }: { snapshot: CycleSnapshot }) {
+function EventList({ events, emptyText }: { events: PipelineEvent[]; emptyText: string }) {
   return (
-    <section className="event-strip" aria-label="Current cycle events">
-      {snapshot.events.length === 0 ? (
-        <span className="muted">No events in this cycle.</span>
+    <div className="event-list">
+      {events.length === 0 ? (
+        <p className="muted">{emptyText}</p>
       ) : (
-        snapshot.events.map((event) => (
-          <span className={clsx("event-chip", event.kind)} key={event.id}>
-            {event.label}: {event.message}
-          </span>
+        events.map((event) => (
+          <div className={clsx("event-detail", event.kind)} key={event.id}>
+            <strong>{event.label}</strong>
+            <span>{event.message}</span>
+          </div>
         ))
       )}
-    </section>
+    </div>
   );
 }
 
-function Inspector({
+function InspectorPanel({
   selectedInstruction,
   selectedSnapshot,
   selectedEvents,
-  current,
 }: {
   selectedInstruction: ReturnType<typeof assemble>["instructions"][number] | null | undefined;
   selectedSnapshot: CycleSnapshot | undefined;
   selectedEvents: PipelineEvent[];
-  current: CycleSnapshot;
 }) {
-  const changedRegisters = new Set(current.registerDiffs.map((diff) => diff.register));
-
   return (
-    <section className="inspector">
-      <div className="pane-header">Inspector</div>
+    <section className="inspector-panel">
       {selectedInstruction ? (
         <div className="inspector-section">
           <h2>{selectedInstruction.text}</h2>
           <p className="muted">
             line {selectedInstruction.source.line}, cycle {selectedSnapshot?.cycle ?? "-"}
           </p>
-          <div className="event-list">
-            {selectedEvents.length === 0 ? (
-              <p className="muted">No event is attached to this instruction in the selected cycle.</p>
-            ) : (
-              selectedEvents.map((event) => (
-                <div className={clsx("event-detail", event.kind)} key={event.id}>
-                  <strong>{event.label}</strong>
-                  <span>{event.message}</span>
-                </div>
-              ))
-            )}
-          </div>
+          <EventList events={selectedEvents} emptyText="No event is attached to this instruction in the selected cycle." />
         </div>
       ) : (
         <p className="muted">Select a timeline cell to inspect hazards, forwarding, flushes, and diffs.</p>
       )}
-      <div className="inspector-section">
-        <h2>Register Diffs</h2>
-        {current.registerDiffs.length === 0 ? (
-          <p className="muted">No register writes in current cycle.</p>
-        ) : (
-          current.registerDiffs.map((diff) => (
+    </section>
+  );
+}
+
+function RegistersPanel({ current }: { current: CycleSnapshot }) {
+  const changedRegisters = new Set(current.registerDiffs.map((diff) => diff.register));
+
+  return (
+    <section className="state-panel">
+      {current.registerDiffs.length > 0 && (
+        <div className="inspector-section">
+          <h2>Register Diffs</h2>
+          {current.registerDiffs.map((diff) => (
             <div className="diff-row" key={diff.register}>
               x{diff.register}: {diff.before} {"->"} {diff.after}
             </div>
-          ))
-        )}
+          ))}
+        </div>
+      )}
+      <div className="register-grid" aria-label="Registers">
+        {current.registers.map((value, index) => (
+          <div className={clsx("register-cell", changedRegisters.has(index) && "changed")} key={index}>
+            <span className="register-name">x{index}</span>
+            <strong className="register-value">{value}</strong>
+          </div>
+        ))}
       </div>
-      <div className="inspector-section">
-        <h2>Registers</h2>
-        <div className="register-grid">
-          {current.registers.map((value, index) => (
-            <div className={clsx("register-cell", changedRegisters.has(index) && "changed")} key={index}>
-              <span className="register-name">x{index}</span>
-              <strong className="register-value">{value}</strong>
+    </section>
+  );
+}
+
+function MemoryPanel({ current }: { current: CycleSnapshot }) {
+  const entries = Object.entries(current.memory);
+
+  return (
+    <section className="state-panel">
+      {current.memoryDiffs.length > 0 && (
+        <div className="inspector-section">
+          <h2>Memory Diffs</h2>
+          {current.memoryDiffs.map((diff) => (
+            <div className="diff-row" key={diff.address}>
+              [{diff.address}]: {diff.before} {"->"} {diff.after}
             </div>
           ))}
         </div>
-      </div>
+      )}
       <div className="inspector-section">
         <h2>Memory</h2>
-        {Object.keys(current.memory).length === 0 ? (
+        {entries.length === 0 ? (
           <p className="muted">No memory writes yet.</p>
         ) : (
-          Object.entries(current.memory).map(([address, value]) => (
+          entries.map(([address, value]) => (
             <div className="diff-row" key={address}>
               [{address}] = {value}
             </div>

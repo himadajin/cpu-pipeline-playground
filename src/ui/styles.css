@@ -315,7 +315,7 @@ input {
 .right-pane {
   border-right: none;
   border-left: 1px solid var(--border);
-  overflow: auto;
+  overflow: hidden;
 }
 
 .center-pane {
@@ -325,8 +325,10 @@ input {
 }
 
 .pipeline-panel,
-.editor-shell,
-.inspector {
+.bottom-drawer,
+.right-dock,
+.inspector-panel,
+.state-panel {
   min-height: 0;
 }
 
@@ -350,7 +352,7 @@ input {
 
 .pipeline-panel {
   display: grid;
-  grid-template-rows: 34px 88px minmax(0, 1fr) 42px;
+  grid-template-rows: 34px 88px minmax(0, 1fr);
   background: var(--app-bg);
 }
 
@@ -379,16 +381,75 @@ input {
   overflow: hidden;
 }
 
-.editor-shell {
+.bottom-drawer {
   display: grid;
   grid-template-rows: 34px minmax(0, 1fr);
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
 
-.editor-shell .pane-header {
+.tab-bar {
+  min-width: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 0 10px;
   border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.tab-list {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tab-button {
+  height: 28px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tab-button:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.tab-button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.drawer-body,
+.dock-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.drawer-body {
+  background: var(--panel);
+}
+
+.dock-body {
+  padding: 10px;
+}
+
+.right-dock {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: 34px minmax(0, 1fr);
+  background: var(--panel);
 }
 
 .cm-editor {
@@ -445,7 +506,7 @@ input {
 .cycle-header,
 .instruction-cell,
 .timeline-cell {
-  min-height: 34px;
+  height: 40px;
   border-right: 1px solid var(--border-subtle);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -548,76 +609,58 @@ input {
   outline-offset: -2px;
 }
 
-.event-badges {
-  min-height: 14px;
-  display: flex;
-  gap: 2px;
-  flex-wrap: wrap;
+.event-markers {
+  height: 8px;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  gap: 3px;
 }
 
-.event-badge,
-.event-chip {
-  border-radius: 3px;
-  border: 1px solid var(--border);
-  padding: 1px 4px;
-  font-size: 10px;
-  line-height: 1.2;
-  color: var(--text);
+.event-marker {
+  width: 7px;
+  height: 7px;
+  display: inline-block;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
   background: var(--panel);
 }
 
-.event-badge.stall,
-.event-chip.stall {
+.event-marker.commit {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.event-marker.forward {
+  width: 9px;
+  height: 5px;
+  border-color: var(--accent-border);
+  border-radius: 999px;
+}
+
+.event-marker.stall {
   border-style: dashed;
 }
 
-.event-badge.flush,
-.event-chip.flush {
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
+.event-marker.flush {
+  border-radius: 1px;
+  transform: rotate(45deg);
 }
 
-.event-badge.forward,
-.event-chip.forward {
-  font-style: italic;
+.event-marker.memory {
+  background: var(--surface-active);
 }
 
-.event-badge.commit,
-.event-chip.commit {
-  border-left: 3px solid var(--accent);
-  font-weight: 700;
+.event-marker.branch {
+  border-color: var(--text-muted);
+  background: linear-gradient(90deg, var(--panel) 45%, var(--text-muted) 45%, var(--text-muted) 55%, var(--panel) 55%);
 }
 
-.event-badge.memory,
-.event-chip.memory {
-  background: var(--surface);
-}
-
-.event-badge.branch,
-.event-chip.branch {
-  border-color: var(--border-strong);
-}
-
-.event-strip {
-  overflow: auto;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
-  padding: 6px 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-content: center;
-}
-
-.event-chip {
-  color: var(--text);
-  font-size: 11px;
-  max-width: 100%;
-}
-
-.inspector {
-  padding: 10px;
+.event-marker.more {
+  width: 4px;
+  height: 4px;
+  border-color: var(--text-soft);
+  background: var(--text-soft);
 }
 
 .inspector-section {
@@ -625,7 +668,8 @@ input {
   padding: 10px 0;
 }
 
-.inspector h2 {
+.inspector-panel h2,
+.state-panel h2 {
   margin: 0 0 6px;
   color: var(--text);
   font-size: 14px;
@@ -639,6 +683,10 @@ input {
 .event-list {
   display: grid;
   gap: 6px;
+}
+
+.drawer-body > .event-list {
+  padding: 10px;
 }
 
 .event-detail {

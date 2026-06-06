@@ -12,6 +12,11 @@ describe("App", () => {
     render(<App />);
     expect(screen.getByText("CPU Pipeline Playground")).toBeInTheDocument();
     expect(screen.getByRole("grid", { name: "Pipeline timeline" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Assembly" })).toHaveClass("active");
+    expect(screen.getByRole("button", { name: "Inspector" })).toHaveClass("active");
+    expect(screen.getByRole("button", { name: "Events" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Registers" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Memory" })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
     await userEvent.click(screen.getByRole("button", { name: "Step" }));
@@ -28,6 +33,35 @@ describe("App", () => {
     await userEvent.type(editor, "\naddi x11, x0, 2");
     expect(screen.getByText("simulation invalidated")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Select program: .*modified/ })).toBeInTheDocument();
+  });
+
+  it("keeps timeline events as markers and moves event logs to the Events tab", async () => {
+    const { container } = render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    for (let index = 0; index < 6; index += 1) {
+      await userEvent.click(screen.getByRole("button", { name: "Step" }));
+    }
+
+    expect(container.querySelector(".event-marker")).toBeInTheDocument();
+    expect(container.querySelector(".event-badge")).not.toBeInTheDocument();
+    expect(screen.queryByText(/commit:/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Events" }));
+    expect(screen.getByText(/writes x1/)).toBeInTheDocument();
+  });
+
+  it("shows registers in fixed order and only highlights changed registers", async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    for (let index = 0; index < 6; index += 1) {
+      await userEvent.click(screen.getByRole("button", { name: "Step" }));
+    }
+    await userEvent.click(screen.getByRole("button", { name: "Registers" }));
+
+    const registerGrid = screen.getByLabelText("Registers");
+    const registerNames = Array.from(registerGrid.querySelectorAll(".register-name")).map((element) => element.textContent);
+    expect(registerNames).toEqual(Array.from({ length: 32 }, (_, index) => `x${index}`));
+    expect(registerGrid.querySelector(".register-cell.changed .register-name")?.textContent).toBe("x1");
   });
 
   it("creates a new program from the program switcher", async () => {
