@@ -1,0 +1,33 @@
+import { readFileSync } from "node:fs";
+import { assemble, createSimulation, stepSimulation } from "./core";
+
+const [filePath, cycleArg] = process.argv.slice(2);
+const maxCycles = Number.parseInt(cycleArg ?? "20", 10);
+
+if (!filePath) {
+  console.error("Usage: npm run cli -- <program.asm> [cycles]");
+  process.exit(1);
+}
+
+const source = readFileSync(filePath, "utf8");
+const assembled = assemble(source);
+
+if (!assembled.ok) {
+  for (const error of assembled.errors) {
+    console.error(`${filePath}:${error.line}:${error.column} ${error.message}`);
+  }
+  process.exit(1);
+}
+
+let simulation = createSimulation(assembled.instructions);
+for (let index = 0; index < maxCycles && !simulation.current.halted; index += 1) {
+  simulation = stepSimulation(simulation);
+  const snapshot = simulation.current;
+  const stages = Object.entries(snapshot.stages)
+    .map(([stage, slot]) => `${stage}:${slot ? slot.instruction.text : "."}`)
+    .join(" | ");
+  console.log(`cycle ${snapshot.cycle} pc=${snapshot.pc} ${stages}`);
+  for (const event of snapshot.events) {
+    console.log(`  [${event.kind}] ${event.message}`);
+  }
+}
