@@ -7,17 +7,14 @@ import { ChevronDown, Copy, FilePlus, Pencil, RotateCcw, StepBack, StepForward, 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   assemble,
-  createSimulation,
-  stepBackSimulation,
-  stepSimulation,
   type CycleSnapshot,
   type PipelineEvent,
   type ProgramDocument,
   type SelectedCell,
-  type SimulationState,
   type StageName,
 } from "../core";
 import { assemblyExtensions } from "./asmLanguage";
+import { useSimulationSession } from "./hooks/useSimulationSession";
 import { createProgram, duplicateProgram, loadPrograms, savePrograms } from "./programStore";
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
@@ -89,34 +86,32 @@ function saveWorkbenchLayout(layout: WorkbenchLayout) {
   window.localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout));
 }
 
-function createSimulationForSource(source: string) {
-  const result = assemble(source);
-  return createSimulation(result.ok ? result.instructions : []);
-}
-
 export function App() {
   const [programs, setPrograms] = useState<ProgramDocument[]>(() => loadPrograms());
   const [selectedProgramId, setSelectedProgramId] = useState(() => programs[0]?.id ?? "");
   const selectedProgram = programs.find((program) => program.id === selectedProgramId) ?? programs[0];
-  const assembled = useMemo(() => assemble(selectedProgram?.source ?? ""), [selectedProgram?.source]);
-  const [simulation, setSimulation] = useState<SimulationState>(() => createSimulationForSource(programs[0]?.source ?? ""));
-  const [simSource, setSimSource] = useState(() => programs[0]?.source ?? "");
-  const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
+  const session = useSimulationSession({
+    programId: selectedProgram?.id ?? "",
+    source: selectedProgram?.source ?? "",
+  });
   const [layout, setLayout] = useState<WorkbenchLayout>(() => loadWorkbenchLayout());
   const [lintCount, setLintCount] = useState(0);
-  const invalidated = simSource !== selectedProgram?.source && simulation.current.cycle > 0;
+  const {
+    activeEventSnapshot,
+    assembled,
+    invalidated,
+    selectedCell,
+    selectedEvents,
+    selectedInstruction,
+    selectedSnapshot,
+    simulation,
+    snapshots,
+    timelineCells,
+  } = session;
 
   useEffect(() => savePrograms(programs), [programs]);
   useEffect(() => saveWorkbenchLayout(layout), [layout]);
 
-  const snapshots = simulation.history;
-  const timelineCells = snapshots.flatMap((snapshot) => snapshot.timeline);
-  const selectedInstruction = selectedCell
-    ? assembled.instructions.find((instruction) => instruction.id === selectedCell.instructionId)
-    : null;
-  const selectedSnapshot = selectedCell ? snapshots.find((snapshot) => snapshot.cycle === selectedCell.cycle) : undefined;
-  const selectedEvents = selectedSnapshot?.events.filter((event) => event.instructionId === selectedCell?.instructionId) ?? [];
-  const activeEventSnapshot = selectedSnapshot ?? simulation.current;
   const editorExtensions = useMemo(
     () => [...assemblyExtensions(setLintCount), EditorView.contentAttributes.of({ "aria-label": "Assembly source" })],
     [],
@@ -147,9 +142,6 @@ export function App() {
 
   function resetForProgram(program: ProgramDocument) {
     setSelectedProgramId(program.id);
-    setSimulation(createSimulationForSource(program.source));
-    setSimSource(program.source);
-    setSelectedCell(null);
   }
 
   function createNewProgram() {
@@ -179,21 +171,6 @@ export function App() {
     if (programId === selectedProgram.id) {
       resetForProgram(nextPrograms[Math.min(Math.max(deletedIndex, 0), nextPrograms.length - 1)]);
     }
-  }
-
-  function assembleAndReset() {
-    const result = assemble(selectedProgram.source);
-    if (!result.ok) return;
-    setSimulation(createSimulation(result.instructions));
-    setSimSource(selectedProgram.source);
-    setSelectedCell(null);
-  }
-
-  function step() {
-    if (invalidated) return;
-    if (simulation.program.length === 0 && assembled.ok) assembleAndReset();
-    setSimulation((current) => stepSimulation(current.program.length === 0 ? createSimulation(assembled.instructions) : current));
-    setSimSource(selectedProgram.source);
   }
 
   function updateLayout(changes: Partial<WorkbenchLayout>) {
@@ -257,13 +234,13 @@ export function App() {
             onDelete={deleteProgram}
           />
           <div className="toolbar-spacer" />
-          <ToolbarButton label="Reset" onClick={assembleAndReset} disabled={!assembled.ok}>
+          <ToolbarButton label="Reset" onClick={session.actions.reset} disabled={!assembled.ok}>
             <RotateCcw size={16} />
           </ToolbarButton>
-          <ToolbarButton label="Back" onClick={() => setSimulation((state) => stepBackSimulation(state))}>
+          <ToolbarButton label="Back" onClick={session.actions.stepBack}>
             <StepBack size={16} />
           </ToolbarButton>
-          <ToolbarButton label="Step" onClick={step} disabled={!assembled.ok || invalidated || simulation.current.halted}>
+          <ToolbarButton label="Step" onClick={session.actions.step} disabled={!assembled.ok || invalidated || simulation.current.halted}>
             <StepForward size={16} />
           </ToolbarButton>
         </header>
@@ -298,7 +275,7 @@ export function App() {
                 cells={timelineCells}
                 currentCycle={simulation.current.cycle}
                 selectedCell={selectedCell}
-                onSelect={setSelectedCell}
+                onSelect={session.actions.selectCell}
               />
             </section>
             <BottomDrawer
