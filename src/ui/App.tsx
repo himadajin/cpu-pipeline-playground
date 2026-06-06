@@ -14,8 +14,8 @@ import {
   type StageName,
 } from "../core";
 import { assemblyExtensions } from "./asmLanguage";
+import { usePrograms, type ProgramStatus } from "./hooks/usePrograms";
 import { useSimulationSession } from "./hooks/useSimulationSession";
-import { createProgram, duplicateProgram, loadPrograms, savePrograms } from "./programStore";
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
 const LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v1";
@@ -25,7 +25,6 @@ const RIGHT_RAIL_WIDTH = 36;
 const BOTTOM_DRAWER_MIN_HEIGHT = 180;
 const BOTTOM_DRAWER_MAX_HEIGHT = 520;
 const BOTTOM_RAIL_HEIGHT = 34;
-type ProgramStatus = { errors: number };
 type BottomTab = "assembly" | "events";
 type RightTab = "inspector" | "registers" | "memory";
 type WorkbenchLayout = {
@@ -87,9 +86,8 @@ function saveWorkbenchLayout(layout: WorkbenchLayout) {
 }
 
 export function App() {
-  const [programs, setPrograms] = useState<ProgramDocument[]>(() => loadPrograms());
-  const [selectedProgramId, setSelectedProgramId] = useState(() => programs[0]?.id ?? "");
-  const selectedProgram = programs.find((program) => program.id === selectedProgramId) ?? programs[0];
+  const programLibrary = usePrograms();
+  const { programs, selectedProgram, statuses: programStatuses } = programLibrary;
   const session = useSimulationSession({
     programId: selectedProgram?.id ?? "",
     source: selectedProgram?.source ?? "",
@@ -109,70 +107,12 @@ export function App() {
     timelineCells,
   } = session;
 
-  useEffect(() => savePrograms(programs), [programs]);
   useEffect(() => saveWorkbenchLayout(layout), [layout]);
 
   const editorExtensions = useMemo(
     () => [...assemblyExtensions(setLintCount), EditorView.contentAttributes.of({ "aria-label": "Assembly source" })],
     [],
   );
-  const programStatuses = useMemo(
-    () =>
-      new Map(
-        programs.map((program) => {
-          const result = assemble(program.source);
-          const errors = result.ok ? 0 : result.errors.length;
-          return [program.id, { errors }];
-        }),
-      ),
-    [programs],
-  );
-
-  function updateProgram(changes: Partial<ProgramDocument>) {
-    updateProgramById(selectedProgram.id, changes);
-  }
-
-  function updateProgramById(programId: string, changes: Partial<ProgramDocument>) {
-    setPrograms((current) =>
-      current.map((program) =>
-        program.id === programId ? { ...program, ...changes, updatedAt: Date.now() } : program,
-      ),
-    );
-  }
-
-  function resetForProgram(program: ProgramDocument) {
-    setSelectedProgramId(program.id);
-  }
-
-  function createNewProgram() {
-    const next = createProgram(programs);
-    setPrograms((current) => [...current, next]);
-    resetForProgram(next);
-    return next;
-  }
-
-  function duplicateSelectedProgram() {
-    const next = duplicateProgram(selectedProgram, programs);
-    setPrograms((current) => [...current, next]);
-    resetForProgram(next);
-  }
-
-  function selectProgram(programId: string) {
-    const nextProgram = programs.find((program) => program.id === programId);
-    if (!nextProgram) return;
-    resetForProgram(nextProgram);
-  }
-
-  function deleteProgram(programId: string) {
-    if (programs.length <= 1) return;
-    const deletedIndex = programs.findIndex((program) => program.id === programId);
-    const nextPrograms = programs.filter((program) => program.id !== programId);
-    setPrograms(nextPrograms);
-    if (programId === selectedProgram.id) {
-      resetForProgram(nextPrograms[Math.min(Math.max(deletedIndex, 0), nextPrograms.length - 1)]);
-    }
-  }
-
   function updateLayout(changes: Partial<WorkbenchLayout>) {
     setLayout((current) => ({ ...current, ...changes }));
   }
@@ -227,11 +167,11 @@ export function App() {
             selectedProgram={selectedProgram}
             statuses={programStatuses}
             invalidated={invalidated}
-            onSelect={selectProgram}
-            onCreate={createNewProgram}
-            onDuplicate={duplicateSelectedProgram}
-            onRename={(programId, name) => updateProgramById(programId, { name })}
-            onDelete={deleteProgram}
+            onSelect={programLibrary.actions.selectProgram}
+            onCreate={programLibrary.actions.createNewProgram}
+            onDuplicate={programLibrary.actions.duplicateSelectedProgram}
+            onRename={programLibrary.actions.renameProgram}
+            onDelete={programLibrary.actions.deleteProgram}
           />
           <div className="toolbar-spacer" />
           <ToolbarButton label="Reset" onClick={session.actions.reset} disabled={!assembled.ok}>
@@ -290,7 +230,7 @@ export function App() {
               lintCount={lintCount}
               source={selectedProgram.source}
               editorExtensions={editorExtensions}
-              onSourceChange={(value) => updateProgram({ source: value })}
+              onSourceChange={(value) => programLibrary.actions.updateSelectedProgram({ source: value })}
             />
           </section>
 
