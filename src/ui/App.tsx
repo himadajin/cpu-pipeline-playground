@@ -5,10 +5,9 @@ import { RotateCcw, StepBack, StepForward } from "lucide-react";
 import { useMemo, useState } from "react";
 import { assemblyExtensions } from "./asmLanguage";
 import { BottomDrawer } from "./components/BottomDrawer";
+import { PipelinePanel } from "./components/PipelinePanel";
 import { ProgramSwitcher } from "./components/ProgramSwitcher";
 import { RightDock } from "./components/RightDock";
-import { StageBoard } from "./components/StageBoard";
-import { Timeline } from "./components/Timeline";
 import { ToolbarButton } from "./components/ToolbarButton";
 import { usePrograms } from "./hooks/usePrograms";
 import { useSimulationSession } from "./hooks/useSimulationSession";
@@ -82,27 +81,15 @@ export function App() {
               gridTemplateRows: `minmax(0, 1fr) ${layout.bottomOpen ? layout.bottomHeight : dimensions.bottomRailHeight}px`,
             }}
           >
-            <section className="pipeline-panel">
-              <div className="pipeline-header">
-                <span>Pipeline</span>
-                <div className="pipeline-status">
-                  <span className="mini-status">cycle {simulation.current.cycle}</span>
-                  <span className={clsx("mini-status", !assembled.ok && "bad")}>
-                    {assembled.ok ? `${assembled.instructions.length} instructions` : `${assembled.errors.length} assemble errors`}
-                  </span>
-                  {invalidated && <span className="mini-status warn">simulation invalidated</span>}
-                </div>
-              </div>
-              <StageBoard snapshot={simulation.current} />
-              <Timeline
-                instructions={assembled.instructions}
-                snapshots={snapshots}
-                cells={timelineCells}
-                currentCycle={simulation.current.cycle}
-                selectedCell={selectedCell}
-                onSelect={session.actions.selectCell}
-              />
-            </section>
+            <PipelinePanel
+              assembled={assembled}
+              cells={timelineCells}
+              current={simulation.current}
+              invalidated={invalidated}
+              onSelectCell={session.actions.selectCell}
+              selectedCell={selectedCell}
+              snapshots={snapshots}
+            />
             <BottomDrawer
               activeTab={layout.bottomTab}
               open={layout.bottomOpen}
