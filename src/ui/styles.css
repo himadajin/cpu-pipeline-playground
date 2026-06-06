@@ -513,28 +513,55 @@ input {
 
 .register-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
+  gap: 2px;
 }
 
 .register-cell {
   min-width: 0;
   display: grid;
-  gap: 2px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  padding: 5px;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  border-left: 3px solid transparent;
+  border-radius: 3px;
+  padding: 5px 8px;
   background: var(--panel);
-  font-size: 11px;
+  font-size: 12px;
 }
 
-.register-cell span {
+.register-cell:hover {
+  background: var(--surface);
+}
+
+.register-cell.changed {
+  border-left-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.register-name {
   color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
 }
 
-.register-cell strong {
+.register-value {
   color: var(--text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.register-cell.changed .register-name,
+.register-cell.changed .register-value {
+  color: var(--accent-text);
+}
+
+.register-cell.changed .register-value {
+  font-weight: 800;
 }
 
 .tooltip,

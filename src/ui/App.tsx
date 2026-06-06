@@ -371,6 +371,8 @@ function Inspector({
   selectedEvents: PipelineEvent[];
   current: CycleSnapshot;
 }) {
+  const changedRegisters = new Set(current.registerDiffs.map((diff) => diff.register));
+
   return (
     <section className="inspector">
       <div className="pane-header">Inspector</div>
@@ -412,9 +414,9 @@ function Inspector({
         <h2>Registers</h2>
         <div className="register-grid">
           {current.registers.map((value, index) => (
-            <div className="register-cell" key={index}>
-              <span>x{index}</span>
-              <strong>{value}</strong>
+            <div className={clsx("register-cell", changedRegisters.has(index) && "changed")} key={index}>
+              <span className="register-name">x{index}</span>
+              <strong className="register-value">{value}</strong>
             </div>
           ))}
         </div>
