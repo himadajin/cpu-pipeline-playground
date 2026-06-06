@@ -68,7 +68,9 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "Registers" }));
 
     const registerGrid = screen.getByLabelText("Registers");
-    const registerNames = Array.from(registerGrid.querySelectorAll(".register-name")).map((element) => element.textContent);
+    const registerNames = Array.from(registerGrid.querySelectorAll(".register-name")).map(
+      (element) => element.textContent,
+    );
     expect(registerNames).toEqual(Array.from({ length: 32 }, (_, index) => `x${index}`));
     expect(registerGrid.querySelector(".register-cell.changed .register-name")?.textContent).toBe("x1");
   });
@@ -123,7 +125,10 @@ describe("App", () => {
     fireEvent(window, pointerEvent("pointerup", {}));
     expect(container.querySelector<HTMLElement>(".workbench")?.style.gridTemplateColumns).toContain("440px");
 
-    fireEvent(screen.getByRole("button", { name: "Resize bottom drawer" }), pointerEvent("pointerdown", { clientY: 500 }));
+    fireEvent(
+      screen.getByRole("button", { name: "Resize bottom drawer" }),
+      pointerEvent("pointerdown", { clientY: 500 }),
+    );
     fireEvent(window, pointerEvent("pointermove", { clientY: 430 }));
     fireEvent(window, pointerEvent("pointerup", {}));
     expect(container.querySelector<HTMLElement>(".center-pane")?.style.gridTemplateRows).toContain("370px");

@@ -64,7 +64,11 @@ export function App() {
           <ToolbarButton label="Back" onClick={session.actions.stepBack}>
             <StepBack size={16} />
           </ToolbarButton>
-          <ToolbarButton label="Step" onClick={session.actions.step} disabled={!assembled.ok || invalidated || simulation.current.halted}>
+          <ToolbarButton
+            label="Step"
+            onClick={session.actions.step}
+            disabled={!assembled.ok || invalidated || simulation.current.halted}
+          >
             <StepForward size={16} />
           </ToolbarButton>
         </header>

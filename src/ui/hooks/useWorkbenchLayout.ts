@@ -115,7 +115,11 @@ export function useWorkbenchLayout() {
     const startY = event.clientY;
     const startHeight = layout.bottomHeight;
     const handleMove = (moveEvent: PointerEvent) => {
-      const nextHeight = clamp(startHeight - (moveEvent.clientY - startY), BOTTOM_DRAWER_MIN_HEIGHT, BOTTOM_DRAWER_MAX_HEIGHT);
+      const nextHeight = clamp(
+        startHeight - (moveEvent.clientY - startY),
+        BOTTOM_DRAWER_MIN_HEIGHT,
+        BOTTOM_DRAWER_MAX_HEIGHT,
+      );
       setLayout((current) => ({ ...current, bottomOpen: true, bottomHeight: nextHeight }));
     };
     const handleUp = () => {

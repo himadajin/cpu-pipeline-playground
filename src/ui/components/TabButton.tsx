@@ -13,7 +13,12 @@ export function TabButton<T extends string>({
   children: ReactNode;
 }) {
   return (
-    <button className={clsx("tab-button", active && "active")} type="button" onClick={() => onSelect(id)} aria-pressed={active}>
+    <button
+      className={clsx("tab-button", active && "active")}
+      type="button"
+      onClick={() => onSelect(id)}
+      aria-pressed={active}
+    >
       {children}
     </button>
   );

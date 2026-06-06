@@ -60,7 +60,12 @@ export function RightDock({
 
   return (
     <section className="right-dock">
-      <button className="resize-handle right-resizer" type="button" aria-label="Resize right dock" onPointerDown={onResizeStart} />
+      <button
+        className="resize-handle right-resizer"
+        type="button"
+        aria-label="Resize right dock"
+        onPointerDown={onResizeStart}
+      />
       <div className="tab-bar">
         <div className="tab-list" role="tablist" aria-label="Inspector dock">
           <TabButton id="inspector" active={activeTab === "inspector"} onSelect={onTabChange}>
@@ -73,7 +78,12 @@ export function RightDock({
             Memory
           </TabButton>
         </div>
-        <button className="panel-close-button" type="button" aria-label="Close right dock" onClick={() => onOpenChange(false)}>
+        <button
+          className="panel-close-button"
+          type="button"
+          aria-label="Close right dock"
+          onClick={() => onOpenChange(false)}
+        >
           <X size={13} />
         </button>
       </div>
@@ -109,7 +119,10 @@ function InspectorPanel({
           <p className="muted">
             line {selectedInstruction.source.line}, cycle {selectedSnapshot?.cycle ?? "-"}
           </p>
-          <EventList events={selectedEvents} emptyText="No event is attached to this instruction in the selected cycle." />
+          <EventList
+            events={selectedEvents}
+            emptyText="No event is attached to this instruction in the selected cycle."
+          />
         </div>
       ) : (
         <p className="muted">Select a timeline cell to inspect hazards, forwarding, flushes, and diffs.</p>

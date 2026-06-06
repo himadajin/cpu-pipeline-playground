@@ -26,9 +26,12 @@ describe("useSimulationSession", () => {
   });
 
   it("marks a run simulation as invalidated when the same program source changes", () => {
-    const { result, rerender } = renderHook((props: { programId: string; source: string }) => useSimulationSession(props), {
-      initialProps: { programId: "a", source: SOURCE },
-    });
+    const { result, rerender } = renderHook(
+      (props: { programId: string; source: string }) => useSimulationSession(props),
+      {
+        initialProps: { programId: "a", source: SOURCE },
+      },
+    );
 
     act(() => result.current.actions.step());
     rerender({ programId: "a", source: UPDATED_SOURCE });
@@ -38,9 +41,12 @@ describe("useSimulationSession", () => {
   });
 
   it("resets to the latest source after invalidation", () => {
-    const { result, rerender } = renderHook((props: { programId: string; source: string }) => useSimulationSession(props), {
-      initialProps: { programId: "a", source: SOURCE },
-    });
+    const { result, rerender } = renderHook(
+      (props: { programId: string; source: string }) => useSimulationSession(props),
+      {
+        initialProps: { programId: "a", source: SOURCE },
+      },
+    );
 
     act(() => result.current.actions.step());
     rerender({ programId: "a", source: UPDATED_SOURCE });
@@ -52,9 +58,12 @@ describe("useSimulationSession", () => {
   });
 
   it("keeps the previous simulation visible while the source has assemble errors", () => {
-    const { result, rerender } = renderHook((props: { programId: string; source: string }) => useSimulationSession(props), {
-      initialProps: { programId: "a", source: SOURCE },
-    });
+    const { result, rerender } = renderHook(
+      (props: { programId: string; source: string }) => useSimulationSession(props),
+      {
+        initialProps: { programId: "a", source: SOURCE },
+      },
+    );
 
     act(() => result.current.actions.step());
     rerender({ programId: "a", source: "not_an_opcode x1\n" });
@@ -64,9 +73,12 @@ describe("useSimulationSession", () => {
   });
 
   it("resets simulation and selection when the active program changes", () => {
-    const { result, rerender } = renderHook((props: { programId: string; source: string }) => useSimulationSession(props), {
-      initialProps: { programId: "a", source: SOURCE },
-    });
+    const { result, rerender } = renderHook(
+      (props: { programId: string; source: string }) => useSimulationSession(props),
+      {
+        initialProps: { programId: "a", source: SOURCE },
+      },
+    );
 
     act(() => result.current.actions.step());
     act(() => result.current.actions.selectCell({ cycle: 1, instructionId: 0 }));
@@ -81,9 +93,12 @@ describe("useSimulationSession", () => {
   });
 
   it("can step immediately after switching away from a halted program", () => {
-    const { result, rerender } = renderHook((props: { programId: string; source: string }) => useSimulationSession(props), {
-      initialProps: { programId: "a", source: "addi x1, x0, 1\n" },
-    });
+    const { result, rerender } = renderHook(
+      (props: { programId: string; source: string }) => useSimulationSession(props),
+      {
+        initialProps: { programId: "a", source: "addi x1, x0, 1\n" },
+      },
+    );
 
     act(() => {
       for (let index = 0; index < 20 && !result.current.simulation.current.halted; index += 1) {

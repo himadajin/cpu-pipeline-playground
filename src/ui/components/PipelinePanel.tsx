@@ -27,7 +27,9 @@ export function PipelinePanel({
         <div className="pipeline-status">
           <span className="mini-status">cycle {current.cycle}</span>
           <span className={clsx("mini-status", !assembled.ok && "bad")}>
-            {assembled.ok ? `${assembled.instructions.length} instructions` : `${assembled.errors.length} assemble errors`}
+            {assembled.ok
+              ? `${assembled.instructions.length} instructions`
+              : `${assembled.errors.length} assemble errors`}
           </span>
           {invalidated && <span className="mini-status warn">simulation invalidated</span>}
         </div>

@@ -60,7 +60,12 @@ export function BottomDrawer({
 
   return (
     <section className="bottom-drawer">
-      <button className="resize-handle bottom-resizer" type="button" aria-label="Resize bottom drawer" onPointerDown={onResizeStart} />
+      <button
+        className="resize-handle bottom-resizer"
+        type="button"
+        aria-label="Resize bottom drawer"
+        onPointerDown={onResizeStart}
+      />
       <div className="tab-bar">
         <div className="tab-list" role="tablist" aria-label="Bottom drawer">
           <TabButton id="assembly" active={activeTab === "assembly"} onSelect={onTabChange}>
@@ -72,11 +77,20 @@ export function BottomDrawer({
         </div>
         <div className="header-status">
           {activeTab === "assembly" && invalidated && <span className="mini-status warn">modified after run</span>}
-          {activeTab === "assembly" && <span className={clsx("mini-status", lintCount > 0 && "bad")}>{lintCount} errors</span>}
-          {activeTab === "events" && (
-            <span className="mini-status">{selectedCell ? `selected cycle ${snapshot.cycle}` : `cycle ${snapshot.cycle}`}</span>
+          {activeTab === "assembly" && (
+            <span className={clsx("mini-status", lintCount > 0 && "bad")}>{lintCount} errors</span>
           )}
-          <button className="panel-close-button" type="button" aria-label="Close bottom drawer" onClick={() => onOpenChange(false)}>
+          {activeTab === "events" && (
+            <span className="mini-status">
+              {selectedCell ? `selected cycle ${snapshot.cycle}` : `cycle ${snapshot.cycle}`}
+            </span>
+          )}
+          <button
+            className="panel-close-button"
+            type="button"
+            aria-label="Close bottom drawer"
+            onClick={() => onOpenChange(false)}
+          >
             <X size={13} />
           </button>
         </div>

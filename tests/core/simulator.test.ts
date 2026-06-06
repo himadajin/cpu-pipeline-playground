@@ -28,7 +28,9 @@ addi x1, x0, 4
 add x2, x1, x1
 `);
     const simulation = runSimulation(createSimulation(program));
-    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "forward")).toBe(true);
+    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "forward")).toBe(
+      true,
+    );
     expect(simulation.current.registers[2]).toBe(8);
   });
 
@@ -41,7 +43,9 @@ lw x3, 0(x1)
 add x4, x3, x2
 `);
     const simulation = runSimulation(createSimulation(program));
-    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(true);
+    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
+      true,
+    );
     expect(simulation.current.registers[4]).toBe(10);
   });
 
@@ -54,7 +58,9 @@ done:
 addi x3, x0, 7
 `);
     const simulation = runSimulation(createSimulation(program));
-    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "flush")).toBe(true);
+    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "flush")).toBe(
+      true,
+    );
     expect(simulation.current.registers[2]).toBe(0);
     expect(simulation.current.registers[3]).toBe(7);
   });

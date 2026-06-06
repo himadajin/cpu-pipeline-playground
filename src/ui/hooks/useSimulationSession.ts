@@ -42,8 +42,11 @@ export function useSimulationSession({ programId, source }: { programId: string;
   const selectedInstruction = selectedCell
     ? assembled.instructions.find((instruction) => instruction.id === selectedCell.instructionId)
     : null;
-  const selectedSnapshot = selectedCell ? snapshots.find((snapshot) => snapshot.cycle === selectedCell.cycle) : undefined;
-  const selectedEvents = selectedSnapshot?.events.filter((event) => event.instructionId === selectedCell?.instructionId) ?? [];
+  const selectedSnapshot = selectedCell
+    ? snapshots.find((snapshot) => snapshot.cycle === selectedCell.cycle)
+    : undefined;
+  const selectedEvents =
+    selectedSnapshot?.events.filter((event) => event.instructionId === selectedCell?.instructionId) ?? [];
   const activeEventSnapshot: CycleSnapshot = selectedSnapshot ?? simulation.current;
 
   useEffect(() => {
@@ -90,7 +93,8 @@ export function useSimulationSession({ programId, source }: { programId: string;
     setState((current) => ({
       ...current,
       programId,
-      simulation: current.programId === programId ? stepBackSimulation(current.simulation) : createSimulationForSource(source),
+      simulation:
+        current.programId === programId ? stepBackSimulation(current.simulation) : createSimulationForSource(source),
       simSource: current.programId === programId ? current.simSource : source,
       selectedCell: current.programId === programId ? current.selectedCell : null,
     }));

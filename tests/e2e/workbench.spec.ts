@@ -40,9 +40,15 @@ test("program library, stepping, timeline selection, and inspector work", async 
   for (let index = 0; index < 5; index += 1) {
     await page.getByRole("button", { name: "Step" }).click();
   }
-  const rowHeightBeforeEvents = await page.locator(".timeline-row").nth(1).evaluate((element) => element.getBoundingClientRect().height);
+  const rowHeightBeforeEvents = await page
+    .locator(".timeline-row")
+    .nth(1)
+    .evaluate((element) => element.getBoundingClientRect().height);
   await page.getByRole("button", { name: "Step" }).click();
-  const rowHeightAfterEvents = await page.locator(".timeline-row").nth(1).evaluate((element) => element.getBoundingClientRect().height);
+  const rowHeightAfterEvents = await page
+    .locator(".timeline-row")
+    .nth(1)
+    .evaluate((element) => element.getBoundingClientRect().height);
   expect(rowHeightAfterEvents).toBe(rowHeightBeforeEvents);
   await expect(page.locator(".event-marker").first()).toBeVisible();
   await expect(page.locator(".event-badge")).toHaveCount(0);

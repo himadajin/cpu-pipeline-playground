@@ -26,9 +26,7 @@ nop
     const result = assemble(source);
     expect(result.errors).toEqual([]);
     expect(result.ok).toBe(true);
-    expect(result.instructions.map((instruction) => instruction.op)).toEqual(
-      expect.arrayContaining(instructionSet()),
-    );
+    expect(result.instructions.map((instruction) => instruction.op)).toEqual(expect.arrayContaining(instructionSet()));
   });
 
   it("reports unknown labels and instructions with line numbers", () => {

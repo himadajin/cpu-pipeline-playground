@@ -139,9 +139,7 @@ function emptyStages(): StageSlots {
 }
 
 function cloneStages(stages: StageSlots): StageSlots {
-  return Object.fromEntries(
-    STAGES.map((stage) => [stage, stages[stage] ? { ...stages[stage]! } : null]),
-  ) as StageSlots;
+  return Object.fromEntries(STAGES.map((stage) => [stage, stages[stage] ? { ...stages[stage]! } : null])) as StageSlots;
 }
 
 function fetchInstruction(program: Instruction[], pc: number): StageSlot | null {
