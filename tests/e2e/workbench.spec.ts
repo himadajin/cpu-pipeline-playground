@@ -110,4 +110,7 @@ test("program library, stepping, timeline selection, and inspector work", async 
   await expect(page.getByLabel("Program name")).toHaveValue("Untitled");
   await page.getByLabel("Program name").press("Enter");
   await expect(page.getByRole("button", { name: /Select program: Untitled/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Step" })).toBeEnabled();
+  await page.getByRole("button", { name: "Step" }).click();
+  await expect(page.locator(".pipeline-status")).toContainText("cycle 1");
 });

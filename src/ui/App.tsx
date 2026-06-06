@@ -89,13 +89,18 @@ function saveWorkbenchLayout(layout: WorkbenchLayout) {
   window.localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout));
 }
 
+function createSimulationForSource(source: string) {
+  const result = assemble(source);
+  return createSimulation(result.ok ? result.instructions : []);
+}
+
 export function App() {
   const [programs, setPrograms] = useState<ProgramDocument[]>(() => loadPrograms());
   const [selectedProgramId, setSelectedProgramId] = useState(() => programs[0]?.id ?? "");
   const selectedProgram = programs.find((program) => program.id === selectedProgramId) ?? programs[0];
   const assembled = useMemo(() => assemble(selectedProgram?.source ?? ""), [selectedProgram?.source]);
-  const [simulation, setSimulation] = useState<SimulationState>(() => createSimulation([]));
-  const [simSource, setSimSource] = useState("");
+  const [simulation, setSimulation] = useState<SimulationState>(() => createSimulationForSource(programs[0]?.source ?? ""));
+  const [simSource, setSimSource] = useState(() => programs[0]?.source ?? "");
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
   const [layout, setLayout] = useState<WorkbenchLayout>(() => loadWorkbenchLayout());
   const [lintCount, setLintCount] = useState(0);
@@ -140,17 +145,30 @@ export function App() {
     );
   }
 
+  function resetForProgram(program: ProgramDocument) {
+    setSelectedProgramId(program.id);
+    setSimulation(createSimulationForSource(program.source));
+    setSimSource(program.source);
+    setSelectedCell(null);
+  }
+
   function createNewProgram() {
     const next = createProgram(programs);
     setPrograms((current) => [...current, next]);
-    setSelectedProgramId(next.id);
+    resetForProgram(next);
     return next;
   }
 
   function duplicateSelectedProgram() {
     const next = duplicateProgram(selectedProgram, programs);
     setPrograms((current) => [...current, next]);
-    setSelectedProgramId(next.id);
+    resetForProgram(next);
+  }
+
+  function selectProgram(programId: string) {
+    const nextProgram = programs.find((program) => program.id === programId);
+    if (!nextProgram) return;
+    resetForProgram(nextProgram);
   }
 
   function deleteProgram(programId: string) {
@@ -159,7 +177,7 @@ export function App() {
     const nextPrograms = programs.filter((program) => program.id !== programId);
     setPrograms(nextPrograms);
     if (programId === selectedProgram.id) {
-      setSelectedProgramId(nextPrograms[Math.min(Math.max(deletedIndex, 0), nextPrograms.length - 1)].id);
+      resetForProgram(nextPrograms[Math.min(Math.max(deletedIndex, 0), nextPrograms.length - 1)]);
     }
   }
 
@@ -232,7 +250,7 @@ export function App() {
             selectedProgram={selectedProgram}
             statuses={programStatuses}
             invalidated={invalidated}
-            onSelect={setSelectedProgramId}
+            onSelect={selectProgram}
             onCreate={createNewProgram}
             onDuplicate={duplicateSelectedProgram}
             onRename={(programId, name) => updateProgramById(programId, { name })}

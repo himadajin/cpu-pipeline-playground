@@ -143,6 +143,24 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /Select program: Untitled/ })).toBeInTheDocument();
   });
 
+  it("keeps step available after creating a new program from a halted simulation", async () => {
+    render(<App />);
+    const stepButton = screen.getByRole("button", { name: "Step" });
+
+    for (let index = 0; index < 20 && !stepButton.hasAttribute("disabled"); index += 1) {
+      await userEvent.click(stepButton);
+    }
+    expect(stepButton).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: /Select program:/ }));
+    await userEvent.click(screen.getByRole("button", { name: "New program" }));
+    expect(screen.getByRole("button", { name: /Select program: Untitled/ })).toBeInTheDocument();
+    expect(stepButton).toBeEnabled();
+
+    await userEvent.click(stepButton);
+    expect(screen.getByText("cycle 1")).toBeInTheDocument();
+  });
+
   it("renames the selected program from the program switcher", async () => {
     render(<App />);
     await userEvent.click(screen.getByRole("button", { name: /Select program:/ }));
