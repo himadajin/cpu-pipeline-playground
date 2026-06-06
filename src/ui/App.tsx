@@ -1,8 +1,8 @@
 import CodeMirror from "@uiw/react-codemirror";
-import * as Select from "@radix-ui/react-select";
+import { EditorView } from "@codemirror/view";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import clsx from "clsx";
-import { ChevronDown, Copy, FilePlus, Pause, Play, RotateCcw, StepBack, StepForward } from "lucide-react";
+import { Copy, FilePlus, Pause, Play, RotateCcw, StepBack, StepForward } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   assemble,
@@ -59,6 +59,21 @@ export function App() {
     : null;
   const selectedSnapshot = selectedCell ? snapshots.find((snapshot) => snapshot.cycle === selectedCell.cycle) : undefined;
   const selectedEvents = selectedSnapshot?.events.filter((event) => event.instructionId === selectedCell?.instructionId) ?? [];
+  const editorExtensions = useMemo(
+    () => [...assemblyExtensions(setLintCount), EditorView.contentAttributes.of({ "aria-label": "Assembly source" })],
+    [],
+  );
+  const programStatuses = useMemo(
+    () =>
+      new Map(
+        programs.map((program) => {
+          const result = assemble(program.source);
+          const errors = result.ok ? 0 : result.errors.length;
+          return [program.id, { errors }];
+        }),
+      ),
+    [programs],
+  );
 
   function updateProgram(changes: Partial<ProgramDocument>) {
     setPrograms((current) =>
@@ -158,58 +173,71 @@ export function App() {
                   </ToolbarButton>
                 </div>
               </div>
-              <Select.Root value={selectedProgram.id} onValueChange={setSelectedProgramId}>
-                <Select.Trigger className="program-select" aria-label="Program">
-                  <Select.Value />
-                  <Select.Icon>
-                    <ChevronDown size={16} />
-                  </Select.Icon>
-                </Select.Trigger>
-                <Select.Portal>
-                  <Select.Content className="select-content" position="popper">
-                    <Select.Viewport>
-                      {programs.map((program) => (
-                        <Select.Item className="select-item" value={program.id} key={program.id}>
-                          <Select.ItemText>{program.name}</Select.ItemText>
-                        </Select.Item>
-                      ))}
-                    </Select.Viewport>
-                  </Select.Content>
-                </Select.Portal>
-              </Select.Root>
-              <input
-                className="program-name"
-                value={selectedProgram.name}
-                onChange={(event) => updateProgram({ name: event.target.value })}
-                aria-label="Program name"
+              <div className="program-list" aria-label="Programs">
+                {programs.map((program) => {
+                  const status = programStatuses.get(program.id);
+                  const selected = program.id === selectedProgram.id;
+                  const modified = selected && invalidated;
+                  return (
+                    <button
+                      className={clsx("program-row", selected && "selected")}
+                      type="button"
+                      onClick={() => setSelectedProgramId(program.id)}
+                      aria-current={selected ? "true" : undefined}
+                      key={program.id}
+                    >
+                      <span className="program-row-name">{program.name}</span>
+                      <span className="program-row-meta">
+                        {status && status.errors > 0 && <span>{status.errors} errors</span>}
+                        {modified && <span>modified</span>}
+                        {status?.errors === 0 && !modified && <span>ready</span>}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="program-rename">
+                <label htmlFor="program-name">Rename</label>
+                <input
+                  id="program-name"
+                  className="program-name"
+                  value={selectedProgram.name}
+                  onChange={(event) => updateProgram({ name: event.target.value })}
+                  aria-label="Program name"
+                />
+              </div>
+            </section>
+          </aside>
+
+          <section className="center-pane">
+            <section className="pipeline-panel">
+              <StageBoard snapshot={simulation.current} />
+              <Timeline
+                instructions={assembled.instructions}
+                snapshots={snapshots}
+                cells={timelineCells}
+                currentCycle={simulation.current.cycle}
+                selectedCell={selectedCell}
+                onSelect={setSelectedCell}
               />
+              <EventStrip snapshot={simulation.current} />
             </section>
             <section className="editor-shell">
               <div className="pane-header">
                 <span>Assembly</span>
-                <span className={clsx("mini-status", lintCount > 0 && "bad")}>{lintCount} errors</span>
+                <div className="header-status">
+                  {invalidated && <span className="mini-status warn">modified after run</span>}
+                  <span className={clsx("mini-status", lintCount > 0 && "bad")}>{lintCount} errors</span>
+                </div>
               </div>
               <CodeMirror
                 value={selectedProgram.source}
                 height="100%"
                 basicSetup={{ foldGutter: false, highlightActiveLine: true }}
-                extensions={assemblyExtensions(setLintCount)}
+                extensions={editorExtensions}
                 onChange={(value) => updateProgram({ source: value })}
               />
             </section>
-          </aside>
-
-          <section className="center-pane">
-            <StageBoard snapshot={simulation.current} />
-            <Timeline
-              instructions={assembled.instructions}
-              snapshots={snapshots}
-              cells={timelineCells}
-              currentCycle={simulation.current.cycle}
-              selectedCell={selectedCell}
-              onSelect={setSelectedCell}
-            />
-            <EventStrip snapshot={simulation.current} />
           </section>
 
           <aside className="right-pane">
@@ -288,12 +316,12 @@ function Timeline({
   const maxCycle = Math.max(12, snapshots.at(-1)?.cycle ?? 0);
   const cycles = Array.from({ length: maxCycle + 1 }, (_, index) => index);
   const cellMap = new Map(cells.map((cell) => [`${cell.instructionId}:${cell.cycle}`, cell]));
-  const rowStyle = { gridTemplateColumns: `230px repeat(${cycles.length}, 72px)` };
+  const rowStyle = { gridTemplateColumns: `112px repeat(${cycles.length}, 72px)` };
   return (
     <section className="timeline-shell">
       <div className="timeline" role="grid" aria-label="Pipeline timeline">
         <div className="timeline-row header-row" style={rowStyle}>
-          <div className="instruction-header">Instruction</div>
+          <div className="instruction-header">Line</div>
           {cycles.map((cycle) => (
             <div className={clsx("cycle-header", cycle === currentCycle && "current")} key={cycle}>
               {cycle}
@@ -302,9 +330,10 @@ function Timeline({
         </div>
         {instructions.map((instruction) => (
           <div className="timeline-row" key={instruction.id} style={rowStyle}>
-            <div className="instruction-cell">
-              <span className="line-number">{instruction.source.line}</span>
-              <span>{instruction.text}</span>
+            <div className="instruction-cell" title={instruction.text}>
+              <span className="line-number">L{instruction.source.line}</span>
+              {" "}
+              <span className="instruction-op">{instruction.op}</span>
             </div>
             {cycles.map((cycle) => {
               const cell = cellMap.get(`${instruction.id}:${cycle}`);

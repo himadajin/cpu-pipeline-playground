@@ -26,11 +26,11 @@ UI は Tailwind CSS、Radix UI Primitives、lucide-react を使って作る。Ta
 
 実装は core を中心に置く。CPU、assembler、simulator はUI非依存の TypeScript module として設計し、CLI でも同じプログラムを assemble し、step実行し、状態とログを確認できるようにする。GUI は core の状態遷移と実行ログを視覚化する層であり、GUIの見た目から core の状態構造を決めない。
 
-画面は教材ページではなく、IDE風の固定ワークベンチとして設計する。上部に薄い toolbar を置き、実行状態、cycle、Run、Step、Back、Reset、autoplay速度を表示する。左ペインには Program Library と CodeMirror editor を置き、中央ペインには pipeline timeline を最優先領域として大きく置く。右ペインは inspector とし、下部ログは常時大きく表示せず、event strip または折りたたみ可能な panel として扱う。
+画面は教材ページではなく、IDE風の固定ワークベンチとして設計する。上部に薄い toolbar を置き、実行状態、cycle、Run、Step、Back、Reset、autoplay速度を表示する。左ペインは Program Library の縦リストに集中させ、中央ペインは上側に pipeline timeline を中心とした観察領域、下側に CodeMirror editor を置く。右ペインは inspector とし、下部ログは常時大きく表示せず、event strip または折りたたみ可能な panel として扱う。
 
 Program Library は中核機能として扱う。複数のアセンブリプログラムを作成、複製、リネーム、選択できるようにし、サンプルプログラムは専用機能ではなく初期データとして入っている通常のプログラムの一つにする。初期保存先は browser localStorage 程度でよく、core は保存方式に依存しない。
 
-pipeline の主表示は、横軸を cycle、縦軸を命令にした timeline table にする。現在cycleの IF / ID / EX / MEM / WB だけを見せる stage board は補助表示として扱う。timeline は横スクロール可能にし、現在cycle周辺を見やすくする。無制限にすべてを一画面へ詰め込まず、表示window、スクロール、折りたたみで密度を制御する。
+pipeline の主表示は、横軸を cycle、縦軸を命令にした timeline table にする。現在cycleの IF / ID / EX / MEM / WB だけを見せる stage board は補助表示として扱う。timeline は横スクロール可能にし、現在cycle周辺を見やすくする。timeline の命令ラベルは editor と重複しないよう行番号と opcode を中心に圧縮し、フル命令文は inspector や tooltip で確認できるようにする。無制限にすべてを一画面へ詰め込まず、表示window、スクロール、折りたたみで密度を制御する。
 
 timeline の各セルには stage 名だけでなく、`stall`、`flush`、`forward`、`commit` などのイベントを色と短いラベルで重ねて表示する。イベントの意味は別ログだけに逃がさず、どの命令のどのcycleで何が起きたかを timeline 上で追えるようにする。
 
@@ -40,7 +40,7 @@ timeline の各セルには stage 名だけでなく、`stall`、`flush`、`forw
 
 UI上の説明は短いラベル、tooltip、inspector のイベント説明に寄せる。長いチュートリアルや教材本文を前面に置かず、触って観察する体験を主役にする。ただし、エラー、hazard、forwarding、flush の理由は、ユーザーが該当セルやイベントを選んだときに理解できる粒度で表示する。
 
-見た目は密度の高い開発ツールとして整える。中央の timeline と editor の可読性を最優先し、装飾的なカードや大きなヒーロー表現は使わない。ペイン幅は安定した最小幅とリサイズまたは折りたたみを持たせ、CodeMirror と timeline が同時に潰れないようにする。
+見た目は密度の高い開発ツールとして整える。左は program navigation、中央上は pipeline observation、中央下は source editing、右は state/detail inspection という役割分担を明確にし、装飾的なカードや大きなヒーロー表現は使わない。ペイン幅は安定した最小幅とリサイズまたは折りたたみを持たせ、CodeMirror と timeline が同時に潰れないようにする。
 
 ## Completion Conditions
 

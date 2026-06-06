@@ -20,8 +20,16 @@ describe("App", () => {
     render(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
     await userEvent.click(screen.getByRole("button", { name: "Step" }));
-    const editor = screen.getAllByRole("textbox")[1];
+    const editor = screen.getByLabelText("Assembly source");
     await userEvent.type(editor, "\naddi x11, x0, 2");
     expect(screen.getByText("simulation invalidated")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /modified/ })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("selects a new program from the program list", async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "New program" }));
+    expect(screen.getByLabelText("Program name")).toHaveValue("Untitled");
+    expect(screen.getByRole("button", { name: /Untitled/ })).toHaveAttribute("aria-current", "true");
   });
 });
