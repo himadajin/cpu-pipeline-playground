@@ -11,8 +11,8 @@ export function assemblyExtensions(onAssembleErrors: (count: number) => void): E
     EditorView.theme({
       "&": {
         height: "100%",
-        backgroundColor: "#101418",
-        color: "#dbe7ef",
+        backgroundColor: "var(--panel)",
+        color: "var(--text)",
       },
       ".cm-content": {
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -20,12 +20,12 @@ export function assemblyExtensions(onAssembleErrors: (count: number) => void): E
         lineHeight: "1.55",
       },
       ".cm-gutters": {
-        backgroundColor: "#0c1116",
-        color: "#6b7a8a",
-        borderRight: "1px solid #22303a",
+        backgroundColor: "var(--surface)",
+        color: "var(--text-soft)",
+        borderRight: "1px solid var(--border)",
       },
-      ".cm-activeLine": { backgroundColor: "#18232c" },
-      ".cm-activeLineGutter": { backgroundColor: "#18232c" },
+      ".cm-activeLine": { backgroundColor: "var(--accent-bg)" },
+      ".cm-activeLineGutter": { backgroundColor: "var(--accent-bg)", color: "var(--accent-text)" },
       ".cm-scroller": { overflow: "auto" },
     }),
     linter((view) => {

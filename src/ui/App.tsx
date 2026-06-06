@@ -205,6 +205,7 @@ export function App() {
               instructions={assembled.instructions}
               snapshots={snapshots}
               cells={timelineCells}
+              currentCycle={simulation.current.cycle}
               selectedCell={selectedCell}
               onSelect={setSelectedCell}
             />
@@ -273,12 +274,14 @@ function Timeline({
   instructions,
   snapshots,
   cells,
+  currentCycle,
   selectedCell,
   onSelect,
 }: {
   instructions: ReturnType<typeof assemble>["instructions"];
   snapshots: CycleSnapshot[];
   cells: CycleSnapshot["timeline"];
+  currentCycle: number;
   selectedCell: SelectedCell | null;
   onSelect: (cell: SelectedCell) => void;
 }) {
@@ -292,7 +295,7 @@ function Timeline({
         <div className="timeline-row header-row" style={rowStyle}>
           <div className="instruction-header">Instruction</div>
           {cycles.map((cycle) => (
-            <div className="cycle-header" key={cycle}>
+            <div className={clsx("cycle-header", cycle === currentCycle && "current")} key={cycle}>
               {cycle}
             </div>
           ))}
@@ -308,7 +311,12 @@ function Timeline({
               const selected = selectedCell?.cycle === cycle && selectedCell.instructionId === instruction.id;
               return (
                 <button
-                  className={clsx("timeline-cell", cell?.stage.toLowerCase(), selected && "selected")}
+                  className={clsx(
+                    "timeline-cell",
+                    cell?.stage.toLowerCase(),
+                    cycle === currentCycle && "current-cycle",
+                    selected && "selected",
+                  )}
                   key={cycle}
                   onClick={() => onSelect({ cycle, instructionId: instruction.id })}
                 >
