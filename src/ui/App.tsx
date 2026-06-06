@@ -2,12 +2,11 @@ import CodeMirror from "@uiw/react-codemirror";
 import { EditorView } from "@codemirror/view";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import clsx from "clsx";
-import { ChevronDown, Copy, FilePlus, Pause, Pencil, Play, RotateCcw, StepBack, StepForward, X } from "lucide-react";
+import { ChevronDown, Copy, FilePlus, Pencil, RotateCcw, StepBack, StepForward, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   assemble,
   createSimulation,
-  runSimulation,
   stepBackSimulation,
   stepSimulation,
   type CycleSnapshot,
@@ -21,7 +20,6 @@ import { assemblyExtensions } from "./asmLanguage";
 import { createProgram, duplicateProgram, loadPrograms, savePrograms } from "./programStore";
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
-const MAX_CYCLES = 300;
 type ProgramStatus = { errors: number };
 
 export function App() {
@@ -32,26 +30,10 @@ export function App() {
   const [simulation, setSimulation] = useState<SimulationState>(() => createSimulation([]));
   const [simSource, setSimSource] = useState("");
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
-  const [speed, setSpeed] = useState(550);
   const [lintCount, setLintCount] = useState(0);
   const invalidated = simSource !== selectedProgram?.source && simulation.current.cycle > 0;
 
   useEffect(() => savePrograms(programs), [programs]);
-
-  useEffect(() => {
-    if (!isRunning) return;
-    const timer = window.setInterval(() => {
-      setSimulation((current) => {
-        if (current.current.halted || current.current.cycle >= MAX_CYCLES) {
-          setIsRunning(false);
-          return current;
-        }
-        return stepSimulation(current);
-      });
-    }, speed);
-    return () => window.clearInterval(timer);
-  }, [isRunning, speed]);
 
   const snapshots = simulation.history;
   const timelineCells = snapshots.flatMap((snapshot) => snapshot.timeline);
@@ -117,7 +99,6 @@ export function App() {
     setSimulation(createSimulation(result.instructions));
     setSimSource(selectedProgram.source);
     setSelectedCell(null);
-    setIsRunning(false);
   }
 
   function step() {
@@ -125,14 +106,6 @@ export function App() {
     if (simulation.program.length === 0 && assembled.ok) assembleAndReset();
     setSimulation((current) => stepSimulation(current.program.length === 0 ? createSimulation(assembled.instructions) : current));
     setSimSource(selectedProgram.source);
-  }
-
-  function runAll() {
-    if (invalidated) return;
-    const base = simulation.program.length === 0 ? createSimulation(assembled.instructions) : simulation;
-    setSimulation(runSimulation(base, MAX_CYCLES));
-    setSimSource(selectedProgram.source);
-    setIsRunning(false);
   }
 
   return (
@@ -151,11 +124,7 @@ export function App() {
             onRename={(programId, name) => updateProgramById(programId, { name })}
             onDelete={deleteProgram}
           />
-          <div className="status-pill">cycle {simulation.current.cycle}</div>
-          <div className={clsx("status-pill", assembled.ok ? "ok" : "bad")}>
-            {assembled.ok ? `${assembled.instructions.length} instructions` : `${assembled.errors.length} assemble errors`}
-          </div>
-          {invalidated && <div className="status-pill warn">simulation invalidated</div>}
+          <div className="toolbar-spacer" />
           <ToolbarButton label="Reset" onClick={assembleAndReset} disabled={!assembled.ok}>
             <RotateCcw size={16} />
           </ToolbarButton>
@@ -165,28 +134,21 @@ export function App() {
           <ToolbarButton label="Step" onClick={step} disabled={!assembled.ok || invalidated || simulation.current.halted}>
             <StepForward size={16} />
           </ToolbarButton>
-          <ToolbarButton label={isRunning ? "Pause" : "Run"} onClick={() => setIsRunning((value) => !value)} disabled={!assembled.ok || invalidated}>
-            {isRunning ? <Pause size={16} /> : <Play size={16} />}
-          </ToolbarButton>
-          <button className="text-button" onClick={runAll} disabled={!assembled.ok || invalidated}>
-            Run all
-          </button>
-          <label className="speed-control">
-            <span>speed</span>
-            <input
-              type="range"
-              min="150"
-              max="1100"
-              step="50"
-              value={speed}
-              onChange={(event) => setSpeed(Number(event.target.value))}
-            />
-          </label>
         </header>
 
         <main className="workbench">
           <section className="center-pane">
             <section className="pipeline-panel">
+              <div className="pipeline-header">
+                <span>Pipeline</span>
+                <div className="pipeline-status">
+                  <span className="mini-status">cycle {simulation.current.cycle}</span>
+                  <span className={clsx("mini-status", !assembled.ok && "bad")}>
+                    {assembled.ok ? `${assembled.instructions.length} instructions` : `${assembled.errors.length} assemble errors`}
+                  </span>
+                  {invalidated && <span className="mini-status warn">simulation invalidated</span>}
+                </div>
+              </div>
               <StageBoard snapshot={simulation.current} />
               <Timeline
                 instructions={assembled.instructions}

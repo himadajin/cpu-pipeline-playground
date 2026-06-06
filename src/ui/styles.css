@@ -71,7 +71,7 @@ input {
 }
 
 .program-trigger {
-  width: 270px;
+  width: 300px;
   height: 30px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -114,10 +114,10 @@ input {
 
 .program-menu {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 10px);
   left: 0;
   z-index: 30;
-  width: 390px;
+  width: 320px;
   max-height: min(520px, calc(100vh - 58px));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -129,14 +129,15 @@ input {
 }
 
 .program-menu-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
-  padding: 8px;
+  padding: 6px;
   border-bottom: 1px solid var(--border);
 }
 
 .program-menu-action {
-  height: 28px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -155,7 +156,7 @@ input {
 .program-menu-list {
   min-height: 0;
   overflow: auto;
-  padding: 5px;
+  padding: 4px;
 }
 
 .program-menu-row {
@@ -163,10 +164,10 @@ input {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   border-left: 3px solid transparent;
   border-radius: 3px;
-  padding: 3px 4px;
+  padding: 2px 4px;
 }
 
 .program-menu-row:hover {
@@ -180,7 +181,7 @@ input {
 
 .program-menu-select {
   min-width: 0;
-  height: 32px;
+  height: 30px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -213,10 +214,17 @@ input {
 .program-row-actions {
   display: inline-flex;
   gap: 4px;
+  opacity: 0;
+}
+
+.program-menu-row:hover .program-row-actions,
+.program-menu-row:focus-within .program-row-actions,
+.program-menu-row.selected .program-row-actions {
+  opacity: 1;
 }
 
 .program-row-actions .icon-button {
-  width: 26px;
+  width: 24px;
   height: 24px;
 }
 
@@ -232,7 +240,6 @@ input {
   font-size: 13px;
 }
 
-.status-pill,
 .mini-status {
   height: 24px;
   display: inline-flex;
@@ -246,23 +253,15 @@ input {
   white-space: nowrap;
 }
 
-.status-pill.ok,
 .mini-status {
   border-color: var(--border);
   color: var(--text-muted);
 }
 
-.status-pill.bad,
 .mini-status.bad {
   border-color: var(--border-strong);
   color: var(--text);
   font-weight: 700;
-}
-
-.status-pill.warn {
-  border-color: var(--accent-border);
-  color: var(--accent-text);
-  background: var(--accent-bg);
 }
 
 .mini-status.warn {
@@ -271,8 +270,11 @@ input {
   background: var(--accent-bg);
 }
 
-.icon-button,
-.text-button {
+.toolbar-spacer {
+  flex: 1;
+}
+
+.icon-button {
   height: 28px;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -287,33 +289,13 @@ input {
   width: 30px;
 }
 
-.text-button {
-  padding: 0 10px;
-}
-
-.icon-button:hover:not(:disabled),
-.text-button:hover:not(:disabled) {
+.icon-button:hover:not(:disabled) {
   background: var(--surface-hover);
 }
 
-.icon-button:disabled,
-.text-button:disabled {
+.icon-button:disabled {
   color: var(--text-soft);
   cursor: not-allowed;
-}
-
-.speed-control {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.speed-control input {
-  width: 150px;
 }
 
 .workbench {
@@ -368,8 +350,33 @@ input {
 
 .pipeline-panel {
   display: grid;
-  grid-template-rows: 96px minmax(0, 1fr) 42px;
+  grid-template-rows: 34px 88px minmax(0, 1fr) 42px;
   background: var(--app-bg);
+}
+
+.pipeline-header {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.pipeline-status {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  overflow: hidden;
 }
 
 .editor-shell {
@@ -389,7 +396,7 @@ input {
 }
 
 .stage-board {
-  padding: 8px 10px;
+  padding: 7px 10px;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
@@ -401,7 +408,7 @@ input {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--panel);
-  padding: 7px 8px;
+  padding: 6px 8px;
 }
 
 .stage-name {
@@ -411,8 +418,8 @@ input {
 }
 
 .stage-inst {
-  margin-top: 6px;
-  min-height: 32px;
+  margin-top: 5px;
+  min-height: 28px;
   overflow: hidden;
   color: var(--text);
   font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
