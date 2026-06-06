@@ -21,9 +21,73 @@ import { assemblyExtensions } from "./asmLanguage";
 import { createProgram, duplicateProgram, loadPrograms, savePrograms } from "./programStore";
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
+const LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v1";
+const RIGHT_DOCK_MIN_WIDTH = 280;
+const RIGHT_DOCK_MAX_WIDTH = 560;
+const RIGHT_RAIL_WIDTH = 36;
+const BOTTOM_DRAWER_MIN_HEIGHT = 180;
+const BOTTOM_DRAWER_MAX_HEIGHT = 520;
+const BOTTOM_RAIL_HEIGHT = 34;
 type ProgramStatus = { errors: number };
 type BottomTab = "assembly" | "events";
 type RightTab = "inspector" | "registers" | "memory";
+type WorkbenchLayout = {
+  bottomOpen: boolean;
+  bottomHeight: number;
+  bottomTab: BottomTab;
+  rightOpen: boolean;
+  rightWidth: number;
+  rightTab: RightTab;
+};
+
+const DEFAULT_LAYOUT: WorkbenchLayout = {
+  bottomOpen: true,
+  bottomHeight: 300,
+  bottomTab: "assembly",
+  rightOpen: true,
+  rightWidth: 340,
+  rightTab: "inspector",
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function isBottomTab(value: unknown): value is BottomTab {
+  return value === "assembly" || value === "events";
+}
+
+function isRightTab(value: unknown): value is RightTab {
+  return value === "inspector" || value === "registers" || value === "memory";
+}
+
+function loadWorkbenchLayout(): WorkbenchLayout {
+  try {
+    const raw = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (!raw) return DEFAULT_LAYOUT;
+    const parsed = JSON.parse(raw) as Partial<WorkbenchLayout>;
+    return {
+      bottomOpen: typeof parsed.bottomOpen === "boolean" ? parsed.bottomOpen : DEFAULT_LAYOUT.bottomOpen,
+      bottomHeight:
+        typeof parsed.bottomHeight === "number"
+          ? clamp(parsed.bottomHeight, BOTTOM_DRAWER_MIN_HEIGHT, BOTTOM_DRAWER_MAX_HEIGHT)
+          : DEFAULT_LAYOUT.bottomHeight,
+      bottomTab: isBottomTab(parsed.bottomTab) ? parsed.bottomTab : DEFAULT_LAYOUT.bottomTab,
+      rightOpen: typeof parsed.rightOpen === "boolean" ? parsed.rightOpen : DEFAULT_LAYOUT.rightOpen,
+      rightWidth:
+        typeof parsed.rightWidth === "number"
+          ? clamp(parsed.rightWidth, RIGHT_DOCK_MIN_WIDTH, RIGHT_DOCK_MAX_WIDTH)
+          : DEFAULT_LAYOUT.rightWidth,
+      rightTab: isRightTab(parsed.rightTab) ? parsed.rightTab : DEFAULT_LAYOUT.rightTab,
+    };
+  } catch {
+    return DEFAULT_LAYOUT;
+  }
+}
+
+function saveWorkbenchLayout(layout: WorkbenchLayout) {
+  window.localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+}
 
 export function App() {
   const [programs, setPrograms] = useState<ProgramDocument[]>(() => loadPrograms());
@@ -33,12 +97,12 @@ export function App() {
   const [simulation, setSimulation] = useState<SimulationState>(() => createSimulation([]));
   const [simSource, setSimSource] = useState("");
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
-  const [bottomTab, setBottomTab] = useState<BottomTab>("assembly");
-  const [rightTab, setRightTab] = useState<RightTab>("inspector");
+  const [layout, setLayout] = useState<WorkbenchLayout>(() => loadWorkbenchLayout());
   const [lintCount, setLintCount] = useState(0);
   const invalidated = simSource !== selectedProgram?.source && simulation.current.cycle > 0;
 
   useEffect(() => savePrograms(programs), [programs]);
+  useEffect(() => saveWorkbenchLayout(layout), [layout]);
 
   const snapshots = simulation.history;
   const timelineCells = snapshots.flatMap((snapshot) => snapshot.timeline);
@@ -114,6 +178,50 @@ export function App() {
     setSimSource(selectedProgram.source);
   }
 
+  function updateLayout(changes: Partial<WorkbenchLayout>) {
+    setLayout((current) => ({ ...current, ...changes }));
+  }
+
+  function selectBottomTab(tab: BottomTab) {
+    updateLayout({ bottomTab: tab, bottomOpen: true });
+  }
+
+  function selectRightTab(tab: RightTab) {
+    updateLayout({ rightTab: tab, rightOpen: true });
+  }
+
+  function startRightResize(event: React.PointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = layout.rightWidth;
+    const handleMove = (moveEvent: PointerEvent) => {
+      const nextWidth = clamp(startWidth - (moveEvent.clientX - startX), RIGHT_DOCK_MIN_WIDTH, RIGHT_DOCK_MAX_WIDTH);
+      setLayout((current) => ({ ...current, rightOpen: true, rightWidth: nextWidth }));
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
+
+  function startBottomResize(event: React.PointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = layout.bottomHeight;
+    const handleMove = (moveEvent: PointerEvent) => {
+      const nextHeight = clamp(startHeight - (moveEvent.clientY - startY), BOTTOM_DRAWER_MIN_HEIGHT, BOTTOM_DRAWER_MAX_HEIGHT);
+      setLayout((current) => ({ ...current, bottomOpen: true, bottomHeight: nextHeight }));
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
+
   return (
     <Tooltip.Provider>
       <div className="app-shell">
@@ -142,8 +250,18 @@ export function App() {
           </ToolbarButton>
         </header>
 
-        <main className="workbench">
-          <section className="center-pane">
+        <main
+          className="workbench"
+          style={{
+            gridTemplateColumns: `minmax(0, 1fr) ${layout.rightOpen ? layout.rightWidth : RIGHT_RAIL_WIDTH}px`,
+          }}
+        >
+          <section
+            className="center-pane"
+            style={{
+              gridTemplateRows: `minmax(0, 1fr) ${layout.bottomOpen ? layout.bottomHeight : BOTTOM_RAIL_HEIGHT}px`,
+            }}
+          >
             <section className="pipeline-panel">
               <div className="pipeline-header">
                 <span>Pipeline</span>
@@ -166,8 +284,11 @@ export function App() {
               />
             </section>
             <BottomDrawer
-              activeTab={bottomTab}
-              onTabChange={setBottomTab}
+              activeTab={layout.bottomTab}
+              open={layout.bottomOpen}
+              onTabChange={selectBottomTab}
+              onOpenChange={(open) => updateLayout({ bottomOpen: open })}
+              onResizeStart={startBottomResize}
               snapshot={activeEventSnapshot}
               selectedCell={selectedCell}
               invalidated={invalidated}
@@ -178,10 +299,13 @@ export function App() {
             />
           </section>
 
-          <aside className="right-pane">
+          <aside className={clsx("right-pane", !layout.rightOpen && "collapsed")}>
             <RightDock
-              activeTab={rightTab}
-              onTabChange={setRightTab}
+              activeTab={layout.rightTab}
+              open={layout.rightOpen}
+              onTabChange={selectRightTab}
+              onOpenChange={(open) => updateLayout({ rightOpen: open })}
+              onResizeStart={startRightResize}
               selectedInstruction={selectedInstruction}
               selectedSnapshot={selectedSnapshot}
               selectedEvents={selectedEvents}
@@ -388,7 +512,7 @@ function TabButton<T extends string>({
   children: React.ReactNode;
 }) {
   return (
-    <button className={clsx("tab-button", active && "active")} type="button" onClick={() => onSelect(id)}>
+    <button className={clsx("tab-button", active && "active")} type="button" onClick={() => onSelect(id)} aria-pressed={active}>
       {children}
     </button>
   );
@@ -396,7 +520,10 @@ function TabButton<T extends string>({
 
 function BottomDrawer({
   activeTab,
+  open,
   onTabChange,
+  onOpenChange,
+  onResizeStart,
   snapshot,
   selectedCell,
   invalidated,
@@ -406,7 +533,10 @@ function BottomDrawer({
   onSourceChange,
 }: {
   activeTab: BottomTab;
+  open: boolean;
   onTabChange: (tab: BottomTab) => void;
+  onOpenChange: (open: boolean) => void;
+  onResizeStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
   snapshot: CycleSnapshot;
   selectedCell: SelectedCell | null;
   invalidated: boolean;
@@ -415,8 +545,32 @@ function BottomDrawer({
   editorExtensions: Extension[];
   onSourceChange: (value: string) => void;
 }) {
+  if (!open) {
+    return (
+      <section className="bottom-rail" aria-label="Bottom drawer rail">
+        <button
+          className={clsx("rail-tab", activeTab === "assembly" && "active")}
+          type="button"
+          onClick={() => onTabChange("assembly")}
+          aria-label="Open Assembly"
+        >
+          Assembly
+        </button>
+        <button
+          className={clsx("rail-tab", activeTab === "events" && "active")}
+          type="button"
+          onClick={() => onTabChange("events")}
+          aria-label="Open Events"
+        >
+          Events
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section className="bottom-drawer">
+      <button className="resize-handle bottom-resizer" type="button" aria-label="Resize bottom drawer" onPointerDown={onResizeStart} />
       <div className="tab-bar">
         <div className="tab-list" role="tablist" aria-label="Bottom drawer">
           <TabButton id="assembly" active={activeTab === "assembly"} onSelect={onTabChange}>
@@ -432,6 +586,9 @@ function BottomDrawer({
           {activeTab === "events" && (
             <span className="mini-status">{selectedCell ? `selected cycle ${snapshot.cycle}` : `cycle ${snapshot.cycle}`}</span>
           )}
+          <button className="panel-close-button" type="button" aria-label="Close bottom drawer" onClick={() => onOpenChange(false)}>
+            <X size={13} />
+          </button>
         </div>
       </div>
       <div className="drawer-body">
@@ -453,21 +610,59 @@ function BottomDrawer({
 
 function RightDock({
   activeTab,
+  open,
   onTabChange,
+  onOpenChange,
+  onResizeStart,
   selectedInstruction,
   selectedSnapshot,
   selectedEvents,
   current,
 }: {
   activeTab: RightTab;
+  open: boolean;
   onTabChange: (tab: RightTab) => void;
+  onOpenChange: (open: boolean) => void;
+  onResizeStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
   selectedInstruction: ReturnType<typeof assemble>["instructions"][number] | null | undefined;
   selectedSnapshot: CycleSnapshot | undefined;
   selectedEvents: PipelineEvent[];
   current: CycleSnapshot;
 }) {
+  if (!open) {
+    return (
+      <section className="right-rail" aria-label="Right dock rail">
+        <button
+          className={clsx("rail-tab vertical", activeTab === "inspector" && "active")}
+          type="button"
+          onClick={() => onTabChange("inspector")}
+          aria-label="Open Inspector"
+        >
+          Inspector
+        </button>
+        <button
+          className={clsx("rail-tab vertical", activeTab === "registers" && "active")}
+          type="button"
+          onClick={() => onTabChange("registers")}
+          aria-label="Open Registers"
+        >
+          Registers
+        </button>
+        <button
+          className={clsx("rail-tab vertical", activeTab === "memory" && "active")}
+          type="button"
+          onClick={() => onTabChange("memory")}
+          aria-label="Open Memory"
+        >
+          Memory
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section className="right-dock">
+      <button className="resize-handle right-resizer" type="button" aria-label="Resize right dock" onPointerDown={onResizeStart} />
       <div className="tab-bar">
         <div className="tab-list" role="tablist" aria-label="Inspector dock">
           <TabButton id="inspector" active={activeTab === "inspector"} onSelect={onTabChange}>
@@ -480,6 +675,9 @@ function RightDock({
             Memory
           </TabButton>
         </div>
+        <button className="panel-close-button" type="button" aria-label="Close right dock" onClick={() => onOpenChange(false)}>
+          <X size={13} />
+        </button>
       </div>
       <div className="dock-body">
         {activeTab === "inspector" && (

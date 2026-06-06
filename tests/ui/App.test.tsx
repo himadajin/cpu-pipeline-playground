@@ -1,7 +1,16 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { App } from "../../src/ui/App";
+
+const LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v1";
+
+function pointerEvent(type: string, coords: { clientX?: number; clientY?: number }) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  if (coords.clientX !== undefined) Object.defineProperty(event, "clientX", { value: coords.clientX });
+  if (coords.clientY !== undefined) Object.defineProperty(event, "clientY", { value: coords.clientY });
+  return event;
+}
 
 describe("App", () => {
   beforeEach(() => {
@@ -62,6 +71,68 @@ describe("App", () => {
     const registerNames = Array.from(registerGrid.querySelectorAll(".register-name")).map((element) => element.textContent);
     expect(registerNames).toEqual(Array.from({ length: 32 }, (_, index) => `x${index}`));
     expect(registerGrid.querySelector(".register-cell.changed .register-name")?.textContent).toBe("x1");
+  });
+
+  it("collapses dock areas and reopens them from rails", async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Close right dock" }));
+    expect(screen.getByLabelText("Right dock rail")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open Registers" }));
+    expect(screen.getByRole("button", { name: "Registers" })).toHaveClass("active");
+
+    await userEvent.click(screen.getByRole("button", { name: "Close bottom drawer" }));
+    expect(screen.getByLabelText("Bottom drawer rail")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open Events" }));
+    expect(screen.getByRole("button", { name: "Events" })).toHaveClass("active");
+  });
+
+  it("restores saved dock layout state", async () => {
+    window.localStorage.setItem(
+      LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        bottomOpen: false,
+        bottomHeight: 260,
+        bottomTab: "events",
+        rightOpen: false,
+        rightWidth: 420,
+        rightTab: "registers",
+      }),
+    );
+    const { container } = render(<App />);
+
+    expect(screen.getByLabelText("Right dock rail")).toBeInTheDocument();
+    expect(screen.getByLabelText("Bottom drawer rail")).toBeInTheDocument();
+    expect(container.querySelector<HTMLElement>(".workbench")?.style.gridTemplateColumns).toContain("36px");
+    expect(container.querySelector<HTMLElement>(".center-pane")?.style.gridTemplateRows).toContain("34px");
+
+    await userEvent.click(screen.getByRole("button", { name: "Open Registers" }));
+    await userEvent.click(screen.getByRole("button", { name: "Open Events" }));
+
+    expect(screen.getByRole("button", { name: "Registers" })).toHaveClass("active");
+    expect(screen.getByRole("button", { name: "Events" })).toHaveClass("active");
+    expect(container.querySelector<HTMLElement>(".workbench")?.style.gridTemplateColumns).toContain("420px");
+    expect(container.querySelector<HTMLElement>(".center-pane")?.style.gridTemplateRows).toContain("260px");
+  });
+
+  it("resizes dock areas and persists the new sizes", async () => {
+    const { container } = render(<App />);
+
+    fireEvent(screen.getByRole("button", { name: "Resize right dock" }), pointerEvent("pointerdown", { clientX: 800 }));
+    fireEvent(window, pointerEvent("pointermove", { clientX: 700 }));
+    fireEvent(window, pointerEvent("pointerup", {}));
+    expect(container.querySelector<HTMLElement>(".workbench")?.style.gridTemplateColumns).toContain("440px");
+
+    fireEvent(screen.getByRole("button", { name: "Resize bottom drawer" }), pointerEvent("pointerdown", { clientY: 500 }));
+    fireEvent(window, pointerEvent("pointermove", { clientY: 430 }));
+    fireEvent(window, pointerEvent("pointerup", {}));
+    expect(container.querySelector<HTMLElement>(".center-pane")?.style.gridTemplateRows).toContain("370px");
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(LAYOUT_STORAGE_KEY) ?? "{}");
+      expect(stored.rightWidth).toBe(440);
+      expect(stored.bottomHeight).toBe(370);
+    });
   });
 
   it("creates a new program from the program switcher", async () => {

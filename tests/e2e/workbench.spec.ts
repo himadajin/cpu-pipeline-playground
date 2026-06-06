@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 test("program library, stepping, timeline selection, and inspector work", async ({ page }) => {
   await page.goto("/");
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
   await expect(page.getByText("CPU Pipeline Playground")).toBeVisible();
   const layout = await page.evaluate(() => {
     const box = (selector: string) => {
@@ -55,6 +57,46 @@ test("program library, stepping, timeline selection, and inspector work", async 
   await expect(page.locator(".register-name").nth(31)).toHaveText("x31");
   await page.getByRole("button", { name: "Memory" }).click();
   await expect(page.getByText("No memory writes yet.")).toBeVisible();
+
+  const beforeRightClose = await page.locator(".center-pane").boundingBox();
+  await page.getByRole("button", { name: "Close right dock" }).click();
+  await expect(page.getByLabel("Right dock rail")).toBeVisible();
+  const afterRightClose = await page.locator(".center-pane").boundingBox();
+  expect(afterRightClose!.width).toBeGreaterThan(beforeRightClose!.width);
+  await page.getByRole("button", { name: "Open Registers" }).click();
+  await expect(page.getByRole("button", { name: "Registers" })).toHaveClass(/active/);
+
+  const beforeBottomClose = await page.locator(".timeline-shell").boundingBox();
+  await page.getByRole("button", { name: "Close bottom drawer" }).click();
+  await expect(page.getByLabel("Bottom drawer rail")).toBeVisible();
+  const afterBottomClose = await page.locator(".timeline-shell").boundingBox();
+  expect(afterBottomClose!.height).toBeGreaterThan(beforeBottomClose!.height);
+  await page.getByRole("button", { name: "Open Events" }).click();
+  await expect(page.getByRole("button", { name: "Events" })).toHaveClass(/active/);
+
+  const rightWidthBeforeResize = (await page.locator(".right-pane").boundingBox())!.width;
+  const rightHandle = (await page.locator(".right-resizer").boundingBox())!;
+  await page.mouse.move(rightHandle.x + rightHandle.width / 2, rightHandle.y + rightHandle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rightHandle.x - 90, rightHandle.y + rightHandle.height / 2);
+  await page.mouse.up();
+  const rightWidthAfterResize = (await page.locator(".right-pane").boundingBox())!.width;
+  expect(rightWidthAfterResize).toBeGreaterThan(rightWidthBeforeResize + 50);
+
+  const bottomHeightBeforeResize = (await page.locator(".bottom-drawer").boundingBox())!.height;
+  const bottomHandle = (await page.locator(".bottom-resizer").boundingBox())!;
+  await page.mouse.move(bottomHandle.x + bottomHandle.width / 2, bottomHandle.y + bottomHandle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bottomHandle.x + bottomHandle.width / 2, bottomHandle.y - 70);
+  await page.mouse.up();
+  const bottomHeightAfterResize = (await page.locator(".bottom-drawer").boundingBox())!.height;
+  expect(bottomHeightAfterResize).toBeGreaterThan(bottomHeightBeforeResize + 40);
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Registers" })).toHaveClass(/active/);
+  await expect(page.getByRole("button", { name: "Events" })).toHaveClass(/active/);
+  expect((await page.locator(".right-pane").boundingBox())!.width).toBeGreaterThan(rightWidthBeforeResize + 50);
+  expect((await page.locator(".bottom-drawer").boundingBox())!.height).toBeGreaterThan(bottomHeightBeforeResize + 40);
 
   await page.getByRole("button", { name: /Select program:/ }).click();
   await expect(page.getByRole("menu", { name: "Programs" })).toBeVisible();
