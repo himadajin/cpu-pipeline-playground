@@ -8,6 +8,18 @@ function assembled(source: string) {
 }
 
 describe("simulator", () => {
+  it("accepts initial architectural state while keeping x0 hardwired to zero", () => {
+    const simulation = createSimulation(assembled("lw x2, 0(x1)\n"), {
+      registers: { 0: 123, 1: 16 },
+      memory: { 16: 42 },
+    });
+
+    const result = runSimulation(simulation);
+    expect(result.current.registers[0]).toBe(0);
+    expect(result.current.registers[1]).toBe(16);
+    expect(result.current.registers[2]).toBe(42);
+  });
+
   it("commits register and memory updates", () => {
     const program = assembled(`
 addi x1, x0, 8
@@ -47,6 +59,31 @@ add x4, x3, x2
       true,
     );
     expect(simulation.current.registers[4]).toBe(10);
+  });
+
+  it("forwards ALU results into store data", () => {
+    const program = assembled(`
+addi x1, x0, 16
+addi x2, x0, 41
+addi x3, x2, 1
+sw x3, 0(x1)
+`);
+    const simulation = runSimulation(createSimulation(program));
+    expect(simulation.current.memory[16]).toBe(42);
+  });
+
+  it("preserves fetched instructions while a load-use stall holds decode", () => {
+    const program = assembled(`
+addi x1, x0, 16
+addi x2, x0, 42
+sw x2, 0(x1)
+lw x3, 0(x1)
+addi x4, x3, 1
+sw x4, 4(x1)
+`);
+    const simulation = runSimulation(createSimulation(program));
+    expect(simulation.current.registers[4]).toBe(43);
+    expect(simulation.current.memory[20]).toBe(43);
   });
 
   it("flushes younger instructions after a taken branch", () => {

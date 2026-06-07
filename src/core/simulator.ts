@@ -9,17 +9,27 @@ import type {
   StageSlot,
   StageSlots,
   TimelineCell,
+  SimulationInitialState,
 } from "./types";
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
 
-export function createSimulation(program: Instruction[]): SimulationState {
+export function createSimulation(program: Instruction[], initialState: SimulationInitialState = {}): SimulationState {
+  const registers = Array.from({ length: 32 }, () => 0);
+  for (const [register, value] of Object.entries(initialState.registers ?? {})) {
+    const index = Number(register);
+    if (Number.isInteger(index) && index > 0 && index < 32) {
+      registers[index] = value | 0;
+    }
+  }
+  registers[0] = 0;
+
   const current: CycleSnapshot = {
     cycle: 0,
     pc: 0,
     stages: emptyStages(),
-    registers: Array.from({ length: 32 }, () => 0),
-    memory: {},
+    registers,
+    memory: { ...(initialState.memory ?? {}) },
     events: [],
     registerDiffs: [],
     memoryDiffs: [],
@@ -103,7 +113,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
     MEM: exOutput ? { ...slots.EX!, ...exOutput } : slots.EX,
     EX: flush || stall ? null : slots.ID,
     ID: flush ? null : stall ? slots.ID : slots.IF,
-    IF: null,
+    IF: stall ? slots.IF : null,
   };
 
   let pc = previous.pc;
