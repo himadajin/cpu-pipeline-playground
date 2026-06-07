@@ -317,6 +317,11 @@ function runExecute(
       const b = read(slot.instruction.rs2);
       return { result: toInt32(a - b) };
     }
+    case "slt": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
+      return { result: toInt32(toInt32(a) < toInt32(b) ? 1 : 0) };
+    }
     case "sltu": {
       const a = read(slot.instruction.rs1);
       const b = read(slot.instruction.rs2);
@@ -350,6 +355,14 @@ function runExecute(
     case "addi": {
       const a = read(slot.instruction.rs1);
       return { result: toInt32(a + slot.instruction.imm) };
+    }
+    case "slti": {
+      const a = read(slot.instruction.rs1);
+      return { result: toInt32(toInt32(a) < toInt32(slot.instruction.imm) ? 1 : 0) };
+    }
+    case "sltiu": {
+      const a = read(slot.instruction.rs1);
+      return { result: toInt32(toUint32(a) < toUint32(slot.instruction.imm) ? 1 : 0) };
     }
     case "lb":
     case "lw": {

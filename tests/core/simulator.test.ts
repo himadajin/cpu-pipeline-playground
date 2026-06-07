@@ -266,6 +266,24 @@ sltu x4, x2, x1
     expect(simulation.current.registers[4]).toBe(1);
   });
 
+  it("executes signed and immediate compare instructions", () => {
+    const program = assembled(`
+slt x3, x1, x2
+slt x4, x2, x1
+slti x5, x1, 1
+slti x6, x2, -1
+sltiu x7, x1, 1
+sltiu x8, x2, -1
+`);
+    const simulation = runSimulation(createSimulation(program, { registers: { 1: -1, 2: 1 } }));
+    expect(simulation.current.registers[3]).toBe(1);
+    expect(simulation.current.registers[4]).toBe(0);
+    expect(simulation.current.registers[5]).toBe(1);
+    expect(simulation.current.registers[6]).toBe(0);
+    expect(simulation.current.registers[7]).toBe(0);
+    expect(simulation.current.registers[8]).toBe(1);
+  });
+
   it("loads signed bytes from byte memory", () => {
     const simulation = runSimulation(
       createSimulation(assembled("lb x2, 1(x1)\nlb x3, 2(x1)\n"), {

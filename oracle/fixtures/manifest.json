@@ -71,6 +71,12 @@
       "file": "compare-byte-memory.asm",
       "kind": "memory",
       "description": "Covers unsigned comparison plus signed byte load and byte store behavior."
+    },
+    {
+      "id": "compare-family",
+      "file": "compare-family.asm",
+      "kind": "alu",
+      "description": "Covers signed and unsigned register and immediate comparison."
     }
   ]
 }

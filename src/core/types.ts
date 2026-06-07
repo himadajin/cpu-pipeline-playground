@@ -14,8 +14,11 @@ export type RegisterFile = Int32[];
 export type Opcode =
   | "add"
   | "sub"
+  | "slt"
   | "sltu"
   | "addi"
+  | "slti"
+  | "sltiu"
   | "lb"
   | "lw"
   | "sb"
@@ -47,8 +50,8 @@ interface InstructionBase {
   text: string;
 }
 
-export type RTypeOpcode = "add" | "sub" | "sltu" | "and" | "or" | "xor" | "sll" | "srl";
-export type ITypeOpcode = "addi" | "lb" | "lw" | "jalr";
+export type RTypeOpcode = "add" | "sub" | "slt" | "sltu" | "and" | "or" | "xor" | "sll" | "srl";
+export type ITypeOpcode = "addi" | "slti" | "sltiu" | "lb" | "lw" | "jalr";
 export type STypeOpcode = "sb" | "sw";
 export type BTypeOpcode = "beq" | "bne" | "blt";
 export type JTypeOpcode = "jal";

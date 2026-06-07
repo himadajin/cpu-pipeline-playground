@@ -14,8 +14,11 @@ import { toByteAddress, toRegisterIndex, toSigned12Immediate, toUpper20Immediate
 const EXPECTED_OPCODES: Opcode[] = [
   "add",
   "sub",
+  "slt",
   "sltu",
   "addi",
+  "slti",
+  "sltiu",
   "lb",
   "lw",
   "sb",

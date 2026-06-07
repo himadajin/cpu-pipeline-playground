@@ -8,7 +8,10 @@ addi x1, x0, 4
 addi x2, x0, 7
 add x3, x1, x2
 sub x4, x3, x1
+slt x5, x4, x2
 sltu x5, x4, x2
+slti x5, x4, -1
+sltiu x5, x4, -1
 and x6, x4, x2
 or x7, x6, x1
 xor x8, x7, x2
@@ -55,21 +58,26 @@ nop
     expect(result.instructions[0]).toMatchObject({ op: "addi", rd: 0, rs1: 0, imm: 0, text: "nop" });
   });
 
-  it("validates signed 12-bit immediates for addi and memory offsets", () => {
+  it("validates signed 12-bit immediates for I-type ALU and memory offsets", () => {
     const result = assemble(
-      "addi x1, x0, 2048\nlb x2, 2048(x1)\nlw x2, -2049(x1)\nsb x2, -2049(x1)\nsw x2, 2048(x1)\naddi x3, x0, 1abc\n",
+      "addi x1, x0, 2048\nslti x1, x0, 2048\nsltiu x1, x0, -2049\nlb x2, 2048(x1)\nlw x2, -2049(x1)\nsb x2, -2049(x1)\nsw x2, 2048(x1)\naddi x3, x0, 1abc\n",
     );
     expect(result.ok).toBe(false);
-    expect(result.errors.map((error) => error.line)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result.errors.map((error) => error.line)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(assemble("addi x1, x0, -0x800\n").errors).toEqual([]);
   });
 
-  it("parses sltu and byte memory operands", () => {
-    const result = assemble("sltu x1, x2, x3\nlb x4, -1(x5)\nsb x6, 7(x8)\n");
+  it("parses compare and byte memory operands", () => {
+    const result = assemble(
+      "slt x1, x2, x3\nsltu x4, x5, x6\nslti x7, x8, -1\nsltiu x9, x10, 1\nlb x11, -1(x12)\nsb x13, 7(x14)\n",
+    );
     expect(result.errors).toEqual([]);
-    expect(result.instructions[0]).toMatchObject({ op: "sltu", rd: 1, rs1: 2, rs2: 3 });
-    expect(result.instructions[1]).toMatchObject({ op: "lb", rd: 4, rs1: 5, imm: -1 });
-    expect(result.instructions[2]).toMatchObject({ op: "sb", rs1: 8, rs2: 6, imm: 7 });
+    expect(result.instructions[0]).toMatchObject({ op: "slt", rd: 1, rs1: 2, rs2: 3 });
+    expect(result.instructions[1]).toMatchObject({ op: "sltu", rd: 4, rs1: 5, rs2: 6 });
+    expect(result.instructions[2]).toMatchObject({ op: "slti", rd: 7, rs1: 8, imm: -1 });
+    expect(result.instructions[3]).toMatchObject({ op: "sltiu", rd: 9, rs1: 10, imm: 1 });
+    expect(result.instructions[4]).toMatchObject({ op: "lb", rd: 11, rs1: 12, imm: -1 });
+    expect(result.instructions[5]).toMatchObject({ op: "sb", rs1: 14, rs2: 13, imm: 7 });
   });
 
   it("parses jalr with a signed 12-bit register offset", () => {

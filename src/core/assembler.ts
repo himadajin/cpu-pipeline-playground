@@ -163,13 +163,13 @@ function parseInstruction(
     return { ...base, op, rd, rs1, rs2 };
   }
 
-  if (op === "addi") {
-    if (args.length !== 3) return fail("addi expects rd, rs1, imm.");
+  if (op === "addi" || op === "slti" || op === "sltiu") {
+    if (args.length !== 3) return fail(`${op} expects rd, rs1, imm.`);
     const rd = parseRegister(args[0]);
     const rs1 = parseRegister(args[1]);
     const imm = parseImmediate(args[2]);
-    if (rd == null || rs1 == null || imm == null) return fail(`Invalid addi operands in "${parsed.body}".`);
-    if (!isSigned12(imm)) return fail("addi immediate must be a signed 12-bit value (-2048..2047).");
+    if (rd == null || rs1 == null || imm == null) return fail(`Invalid ${op} operands in "${parsed.body}".`);
+    if (!isSigned12(imm)) return fail(`${op} immediate must be a signed 12-bit value (-2048..2047).`);
     return { ...base, op, rd, rs1, imm: toSigned12Immediate(imm) };
   }
 
