@@ -136,8 +136,9 @@ export function stepSimulation(state: SimulationState): SimulationState {
   if (registers[0] !== 0) registers[0] = toInt32(0);
   const timeline = buildTimeline(cycle, nextStages, events);
   const halted =
-    Boolean(memOutput?.halted || nextStages.IF?.halted) ||
-    (pc >= state.program.length * INSTRUCTION_SIZE_BYTES && STAGES.every((stage) => nextStages[stage] === null));
+    Boolean(exOutput?.halted || memOutput?.halted || nextStages.IF?.halted) ||
+    ((pc < 0 || pc >= state.program.length * INSTRUCTION_SIZE_BYTES) &&
+      STAGES.every((stage) => nextStages[stage] === null));
   const current: CycleSnapshot = {
     cycle,
     pc,
@@ -350,6 +351,21 @@ function runExecute(
     }
     case "jal":
       return { result: toInt32(slot.pc + INSTRUCTION_SIZE_BYTES), taken: true, nextPc: slot.instruction.target };
+    case "jalr": {
+      const a = read(slot.instruction.rs1);
+      const nextPc = toByteAddress(toInt32(a + slot.instruction.imm) & ~1);
+      if (!isAlignedInstructionAddress(nextPc)) {
+        events.push(
+          errorEvent(cycle, slot, `${slot.instruction.text} cannot jump to misaligned byte address ${nextPc}.`),
+        );
+        return { halted: true };
+      }
+      return { result: toInt32(slot.pc + INSTRUCTION_SIZE_BYTES), taken: true, nextPc };
+    }
+    case "lui":
+      return { result: toInt32(slot.instruction.imm << 12) };
+    case "auipc":
+      return { result: toInt32(slot.pc + (slot.instruction.imm << 12)) };
   }
 }
 
@@ -393,7 +409,9 @@ function shouldStallForLoadUse(id: StageSlot | null, ex: StageSlot | null): bool
 function writebackValue(slot: StageSlot | null): Int32 | null {
   if (!slot) return null;
   if (slot.instruction.op === "lw") return slot.loadedValue ?? null;
-  if (slot.instruction.op === "jal") return slot.result ?? toInt32(slot.pc + INSTRUCTION_SIZE_BYTES);
+  if (slot.instruction.op === "jal" || slot.instruction.op === "jalr") {
+    return slot.result ?? toInt32(slot.pc + INSTRUCTION_SIZE_BYTES);
+  }
   return slot.result ?? null;
 }
 
@@ -462,6 +480,10 @@ function readWord(memory: ByteMemory, address: ByteAddress): Int32 {
 
 function isAlignedWordAddress(address: ByteAddress): boolean {
   return address % 4 === 0;
+}
+
+function isAlignedInstructionAddress(address: ByteAddress): boolean {
+  return address % INSTRUCTION_SIZE_BYTES === 0;
 }
 
 function errorEvent(cycle: number, slot: StageSlot, message: string): PipelineEvent {

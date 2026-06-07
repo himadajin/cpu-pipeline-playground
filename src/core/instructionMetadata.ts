@@ -1,10 +1,10 @@
 import type { BTypeOpcode, Instruction, Opcode, RegisterIndex, RTypeOpcode } from "./types";
 
-export type InstructionFormat = "R" | "I" | "S" | "B" | "J";
+export type InstructionFormat = "R" | "I" | "S" | "B" | "J" | "U";
 export type InstructionCategory = "alu" | "memory" | "control";
 export type SourceOperand = "rs1" | "rs2";
 export type DestinationOperand = "rd";
-export type ImmediateKind = "signed12" | "branchTarget" | "jumpTarget";
+export type ImmediateKind = "signed12" | "branchTarget" | "jumpTarget" | "upper20";
 
 export interface InstructionMetadata {
   format: InstructionFormat;
@@ -97,6 +97,33 @@ export const INSTRUCTION_METADATA = {
     immediateKind: "jumpTarget",
     operandSyntax: "rd, label",
     description: "Jump and write pc plus 4.",
+  },
+  jalr: {
+    format: "I",
+    category: "control",
+    sources: ["rs1"],
+    destination: "rd",
+    immediateKind: "signed12",
+    operandSyntax: "rd, offset(rs1)",
+    description: "Jump through a register plus signed 12-bit offset.",
+  },
+  lui: {
+    format: "U",
+    category: "alu",
+    sources: [],
+    destination: "rd",
+    immediateKind: "upper20",
+    operandSyntax: "rd, imm20",
+    description: "Load a 20-bit upper immediate.",
+  },
+  auipc: {
+    format: "U",
+    category: "alu",
+    sources: [],
+    destination: "rd",
+    immediateKind: "upper20",
+    operandSyntax: "rd, imm20",
+    description: "Add a 20-bit upper immediate to pc.",
   },
   and: {
     format: "R",

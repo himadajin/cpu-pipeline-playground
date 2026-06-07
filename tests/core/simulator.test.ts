@@ -124,6 +124,77 @@ addi x3, x0, 7
     expect(simulation.current.registers[3]).toBe(7);
   });
 
+  it("executes jalr as register-based control flow and writes pc plus 4", () => {
+    const program = assembled(`
+addi x2, x0, 16
+jalr x1, 0(x2)
+addi x3, x0, 99
+addi x4, x0, 99
+target:
+addi x5, x0, 7
+`);
+    const simulation = runSimulation(createSimulation(program));
+    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "flush")).toBe(
+      true,
+    );
+    expect(simulation.current.registers[1]).toBe(8);
+    expect(simulation.current.registers[3]).toBe(0);
+    expect(simulation.current.registers[4]).toBe(0);
+    expect(simulation.current.registers[5]).toBe(7);
+  });
+
+  it("clears bit zero for jalr targets and halts on misaligned instruction addresses", () => {
+    const clearBitZero = runSimulation(
+      createSimulation(
+        assembled(`
+jalr x1, 0(x2)
+addi x3, x0, 99
+target:
+addi x4, x0, 7
+`),
+        { registers: { 2: 9 } },
+      ),
+    );
+    expect(clearBitZero.current.registers[1]).toBe(4);
+    expect(clearBitZero.current.registers[3]).toBe(0);
+    expect(clearBitZero.current.registers[4]).toBe(7);
+
+    const misaligned = runSimulation(createSimulation(assembled("jalr x1, 0(x2)\n"), { registers: { 2: 11 } }));
+    expect(misaligned.current.halted).toBe(true);
+    expect(misaligned.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(
+      true,
+    );
+  });
+
+  it("stalls when jalr depends on a loaded source register", () => {
+    const program = assembled(`
+addi x1, x0, 16
+lw x2, 0(x1)
+jalr x3, 0(x2)
+addi x4, x0, 99
+target:
+addi x5, x0, 1
+`);
+    const simulation = runSimulation(createSimulation(program, { memory: { 16: 16, 17: 0, 18: 0, 19: 0 } }));
+
+    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
+      true,
+    );
+    expect(simulation.current.registers[3]).toBe(12);
+    expect(simulation.current.registers[4]).toBe(0);
+    expect(simulation.current.registers[5]).toBe(1);
+  });
+
+  it("executes upper-immediate instructions with byte-addressed pc", () => {
+    const program = assembled(`
+lui x1, 0x80000
+auipc x2, 1
+`);
+    const simulation = runSimulation(createSimulation(program));
+    expect(simulation.current.registers[1]).toBe(-2147483648);
+    expect(simulation.current.registers[2]).toBe(0x1004);
+  });
+
   it("uses instruction forms for writeback and source register behavior", () => {
     const program = assembled(`
 addi x1, x0, 16
@@ -132,6 +203,7 @@ sw x2, 0(x1)
 lw x3, 0(x1)
 add x4, x2, x3
 jal x5, done
+jalr x7, 0(x1)
 done:
 addi x6, x0, 1
 `);
@@ -144,6 +216,7 @@ addi x6, x0, 1
     expect(commitEvents.some((event) => event.instructionId === program[3]?.id)).toBe(true);
     expect(commitEvents.some((event) => event.instructionId === program[4]?.id)).toBe(true);
     expect(commitEvents.some((event) => event.instructionId === program[5]?.id)).toBe(true);
+    expect(commitEvents.some((event) => event.instructionId === program[6]?.id)).toBe(false);
     expect(simulation.current.registers[5]).toBe(24);
   });
 

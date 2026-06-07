@@ -59,6 +59,12 @@
       "file": "branch.asm",
       "kind": "control",
       "description": "Covers taken branches, loop control, jal link value, and flushed fallthrough work."
+    },
+    {
+      "id": "control-upper",
+      "file": "control-upper.asm",
+      "kind": "control",
+      "description": "Covers jalr control flow plus lui and auipc upper-immediate behavior."
     }
   ]
 }
