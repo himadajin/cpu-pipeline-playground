@@ -14,8 +14,11 @@ import { toByteAddress, toRegisterIndex, toSigned12Immediate, toUpper20Immediate
 const EXPECTED_OPCODES: Opcode[] = [
   "add",
   "sub",
+  "sltu",
   "addi",
+  "lb",
   "lw",
+  "sb",
   "sw",
   "beq",
   "bne",
@@ -85,24 +88,37 @@ describe("instruction metadata", () => {
   });
 
   it("marks load and addi as single-source writeback instructions", () => {
-    const lw: Instruction = {
+    const lb: Instruction = {
       id: 0,
+      op: "lb",
+      rd: toRegisterIndex(6),
+      rs1: toRegisterIndex(8),
+      imm: toSigned12Immediate(1),
+      source: { line: 1, text: "lb x6, 1(x8)" },
+      text: "lb x6, 1(x8)",
+    };
+    const lw: Instruction = {
+      id: 1,
       op: "lw",
       rd: toRegisterIndex(7),
       rs1: toRegisterIndex(8),
       imm: toSigned12Immediate(4),
-      source: { line: 1, text: "lw x7, 4(x8)" },
+      source: { line: 2, text: "lw x7, 4(x8)" },
       text: "lw x7, 4(x8)",
     };
     const addi: Instruction = {
-      id: 1,
+      id: 2,
       op: "addi",
       rd: toRegisterIndex(9),
       rs1: toRegisterIndex(10),
       imm: toSigned12Immediate(-1),
-      source: { line: 2, text: "addi x9, x10, -1" },
+      source: { line: 3, text: "addi x9, x10, -1" },
       text: "addi x9, x10, -1",
     };
+
+    expect(sourceRegisters(lb)).toEqual([8]);
+    expect(destinationRegister(lb)).toBe(6);
+    expect(writesRegister(lb)).toBe(true);
 
     expect(sourceRegisters(lw)).toEqual([8]);
     expect(destinationRegister(lw)).toBe(7);
@@ -111,6 +127,22 @@ describe("instruction metadata", () => {
     expect(sourceRegisters(addi)).toEqual([10]);
     expect(destinationRegister(addi)).toBe(9);
     expect(writesRegister(addi)).toBe(true);
+  });
+
+  it("marks byte stores as memory writers without register writeback", () => {
+    const sb: Instruction = {
+      id: 0,
+      op: "sb",
+      rs1: toRegisterIndex(4),
+      rs2: toRegisterIndex(5),
+      imm: toSigned12Immediate(3),
+      source: { line: 1, text: "sb x5, 3(x4)" },
+      text: "sb x5, 3(x4)",
+    };
+
+    expect(sourceRegisters(sb)).toEqual([4, 5]);
+    expect(destinationRegister(sb)).toBeNull();
+    expect(writesRegister(sb)).toBe(false);
   });
 
   it("marks jalr and upper-immediate instructions by their architectural operands", () => {

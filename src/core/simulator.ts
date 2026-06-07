@@ -220,6 +220,20 @@ function runMemory(
   events: PipelineEvent[],
 ): Partial<StageSlot> | null {
   if (!slot) return null;
+  if (slot.instruction.op === "lb") {
+    const address = slot.address ?? toByteAddress(0);
+    const loadedValue = readSignedByte(memory, address);
+    events.push({
+      id: eventId(cycle, "memory", slot.instructionId),
+      cycle,
+      instructionId: slot.instructionId,
+      kind: "memory",
+      label: "load",
+      message: `${slot.instruction.text} reads signed byte at byte address ${address} = ${loadedValue}.`,
+      detail: { address, value: loadedValue },
+    });
+    return { loadedValue };
+  }
   if (slot.instruction.op === "lw") {
     const address = slot.address ?? toByteAddress(0);
     if (!isAlignedWordAddress(address)) {
@@ -237,6 +251,22 @@ function runMemory(
       detail: { address, value: loadedValue },
     });
     return { loadedValue };
+  }
+  if (slot.instruction.op === "sb") {
+    const address = slot.address ?? toByteAddress(0);
+    const after = toByteValue(slot.storeValue ?? 0);
+    const before = memory[address] ?? toByteValue(0);
+    memory[address] = after;
+    diffs.push({ address, before, after });
+    events.push({
+      id: eventId(cycle, "memory", slot.instructionId),
+      cycle,
+      instructionId: slot.instructionId,
+      kind: "memory",
+      label: "store",
+      message: `${slot.instruction.text} writes byte at byte address ${address}.`,
+      detail: { address, value: after },
+    });
   }
   if (slot.instruction.op === "sw") {
     const address = slot.address ?? toByteAddress(0);
@@ -287,6 +317,11 @@ function runExecute(
       const b = read(slot.instruction.rs2);
       return { result: toInt32(a - b) };
     }
+    case "sltu": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
+      return { result: toInt32(toUint32(a) < toUint32(b) ? 1 : 0) };
+    }
     case "and": {
       const a = read(slot.instruction.rs1);
       const b = read(slot.instruction.rs2);
@@ -316,10 +351,12 @@ function runExecute(
       const a = read(slot.instruction.rs1);
       return { result: toInt32(a + slot.instruction.imm) };
     }
+    case "lb":
     case "lw": {
       const a = read(slot.instruction.rs1);
       return { address: toByteAddress(toInt32(a + slot.instruction.imm)) };
     }
+    case "sb":
     case "sw": {
       const a = read(slot.instruction.rs1);
       const b = read(slot.instruction.rs2);
@@ -402,13 +439,13 @@ function consumerStagePeer(_consumer: StageSlot, stage: StageName): StageSlot | 
 }
 
 function shouldStallForLoadUse(id: StageSlot | null, ex: StageSlot | null): boolean {
-  if (!id || !ex || ex.instruction.op !== "lw") return false;
+  if (!id || !ex || (ex.instruction.op !== "lb" && ex.instruction.op !== "lw")) return false;
   return sourceRegisters(id.instruction).includes(ex.instruction.rd);
 }
 
 function writebackValue(slot: StageSlot | null): Int32 | null {
   if (!slot) return null;
-  if (slot.instruction.op === "lw") return slot.loadedValue ?? null;
+  if (slot.instruction.op === "lb" || slot.instruction.op === "lw") return slot.loadedValue ?? null;
   if (slot.instruction.op === "jal" || slot.instruction.op === "jalr") {
     return slot.result ?? toInt32(slot.pc + INSTRUCTION_SIZE_BYTES);
   }
@@ -476,6 +513,11 @@ function readWord(memory: ByteMemory, address: ByteAddress): Int32 {
     (((memory[address + 2] ?? 0) & 0xff) << 16) |
     (((memory[address + 3] ?? 0) & 0xff) << 24);
   return toInt32(value);
+}
+
+function readSignedByte(memory: ByteMemory, address: ByteAddress): Int32 {
+  const value = (memory[address] ?? 0) & 0xff;
+  return toInt32((value << 24) >> 24);
 }
 
 function isAlignedWordAddress(address: ByteAddress): boolean {

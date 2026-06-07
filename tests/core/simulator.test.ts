@@ -256,6 +256,62 @@ addi x4, x0, 1
     expect(simulation.current.registers[4]).toBe(1);
   });
 
+  it("uses unsigned uint32 comparison for sltu", () => {
+    const program = assembled(`
+sltu x3, x1, x2
+sltu x4, x2, x1
+`);
+    const simulation = runSimulation(createSimulation(program, { registers: { 1: -1, 2: 1 } }));
+    expect(simulation.current.registers[3]).toBe(0);
+    expect(simulation.current.registers[4]).toBe(1);
+  });
+
+  it("loads signed bytes from byte memory", () => {
+    const simulation = runSimulation(
+      createSimulation(assembled("lb x2, 1(x1)\nlb x3, 2(x1)\n"), {
+        registers: { 1: 16 },
+        memory: { 17: 0xff, 18: 0x7f },
+      }),
+    );
+    expect(simulation.current.registers[2]).toBe(-1);
+    expect(simulation.current.registers[3]).toBe(127);
+  });
+
+  it("stores one byte at unaligned byte addresses and records one byte diff", () => {
+    const simulation = runSimulation(
+      createSimulation(assembled("sb x2, 1(x1)\n"), {
+        registers: { 1: 16, 2: 0x12345678 },
+        memory: { 16: 0xaa, 17: 0xbb, 18: 0xcc },
+      }),
+    );
+    expect(simulation.current.memory[16]).toBe(0xaa);
+    expect(simulation.current.memory[17]).toBe(0x78);
+    expect(simulation.current.memory[18]).toBe(0xcc);
+    expect(simulation.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([
+      { address: 17, before: 0xbb, after: 0x78 },
+    ]);
+    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(
+      false,
+    );
+  });
+
+  it("stalls when an instruction depends on a loaded byte", () => {
+    const program = assembled(`
+lb x2, 1(x1)
+addi x3, x2, 1
+`);
+    const simulation = runSimulation(
+      createSimulation(program, {
+        registers: { 1: 16 },
+        memory: { 17: 0x7f },
+      }),
+    );
+    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
+      true,
+    );
+    expect(simulation.current.registers[3]).toBe(128);
+  });
+
   it("loads little-endian words from byte memory", () => {
     const simulation = runSimulation(
       createSimulation(assembled("lw x2, 0(x1)\n"), {

@@ -8,20 +8,23 @@ addi x1, x0, 4
 addi x2, x0, 7
 add x3, x1, x2
 sub x4, x3, x1
-and x5, x4, x2
-or x6, x5, x1
-xor x7, x6, x2
-sll x8, x7, x1
-srl x9, x8, x1
-sw x9, 0(x1)
-lw x10, 0(x1)
-beq x10, x9, done
-bne x10, x0, done
-blt x0, x10, done
+sltu x5, x4, x2
+and x6, x4, x2
+or x7, x6, x1
+xor x8, x7, x2
+sll x9, x8, x1
+srl x10, x9, x1
+sb x10, 1(x1)
+sw x10, 0(x1)
+lb x11, 1(x1)
+lw x12, 0(x1)
+beq x12, x10, done
+bne x12, x0, done
+blt x0, x12, done
 jal x0, done
-jalr x11, 0(x1)
-lui x12, 0x12345
-auipc x13, 1
+jalr x13, 0(x1)
+lui x14, 0x12345
+auipc x15, 1
 nop
 done:
 nop
@@ -53,10 +56,20 @@ nop
   });
 
   it("validates signed 12-bit immediates for addi and memory offsets", () => {
-    const result = assemble("addi x1, x0, 2048\nlw x2, -2049(x1)\nsw x2, 2048(x1)\naddi x3, x0, 1abc\n");
+    const result = assemble(
+      "addi x1, x0, 2048\nlb x2, 2048(x1)\nlw x2, -2049(x1)\nsb x2, -2049(x1)\nsw x2, 2048(x1)\naddi x3, x0, 1abc\n",
+    );
     expect(result.ok).toBe(false);
-    expect(result.errors.map((error) => error.line)).toEqual([1, 2, 3, 4]);
+    expect(result.errors.map((error) => error.line)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(assemble("addi x1, x0, -0x800\n").errors).toEqual([]);
+  });
+
+  it("parses sltu and byte memory operands", () => {
+    const result = assemble("sltu x1, x2, x3\nlb x4, -1(x5)\nsb x6, 7(x8)\n");
+    expect(result.errors).toEqual([]);
+    expect(result.instructions[0]).toMatchObject({ op: "sltu", rd: 1, rs1: 2, rs2: 3 });
+    expect(result.instructions[1]).toMatchObject({ op: "lb", rd: 4, rs1: 5, imm: -1 });
+    expect(result.instructions[2]).toMatchObject({ op: "sb", rs1: 8, rs2: 6, imm: 7 });
   });
 
   it("parses jalr with a signed 12-bit register offset", () => {
