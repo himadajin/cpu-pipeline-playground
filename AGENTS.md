@@ -74,6 +74,7 @@ Run the narrowest useful check while iterating, then run the full set before han
 ## Testing Guidance
 
 - Add core tests for any assembler or simulator behavior change.
+- When changing instruction semantics or oracle fixtures, preserve the fixture principles in `oracle/README.md`.
 - Add React Testing Library tests for UI state changes that do not require a real browser.
 - Add or update Playwright tests for flows involving CodeMirror, timeline selection, layout integrity, or browser storage behavior.
 - If CodeMirror causes jsdom geometry issues, patch browser geometry in `tests/setup.ts` rather than weakening product code.
