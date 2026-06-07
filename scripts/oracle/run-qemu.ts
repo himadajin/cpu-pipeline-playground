@@ -146,7 +146,7 @@ function normalizeQemuRegisterValue(value: string, fixture: ResolvedOracleFixtur
   const textEnd = oracleTestBase + instructionCount * 4 + 4;
 
   if (parsed >= oracleTestBase && parsed <= textEnd && (parsed - oracleTestBase) % 4 === 0) {
-    return `0x${((parsed - oracleTestBase) / 4).toString(16).padStart(8, "0")}`;
+    return `0x${(parsed - oracleTestBase).toString(16).padStart(8, "0")}`;
   }
 
   return value;

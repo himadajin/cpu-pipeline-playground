@@ -1,35 +1,13 @@
 import { toByteAddress, toRegisterIndex, toSigned12Immediate } from "./numbers";
-import type {
-  AssembleError,
-  AssembleResult,
-  BTypeOpcode,
-  ByteAddress,
-  Instruction,
-  LabelTable,
-  Opcode,
-  RegisterIndex,
-  RTypeOpcode,
-} from "./types";
+import {
+  ASSEMBLER_MNEMONICS,
+  isAssemblerMnemonic,
+  isBTypeOpcode,
+  isOpcode,
+  isRTypeOpcode,
+} from "./instructionMetadata";
+import type { AssembleError, AssembleResult, ByteAddress, Instruction, LabelTable, RegisterIndex } from "./types";
 
-const INSTRUCTION_SET = new Set<Opcode>([
-  "add",
-  "sub",
-  "addi",
-  "lw",
-  "sw",
-  "beq",
-  "bne",
-  "blt",
-  "jal",
-  "and",
-  "or",
-  "xor",
-  "sll",
-  "srl",
-]);
-const ASSEMBLER_MNEMONICS = new Set<string>([...INSTRUCTION_SET, "nop"]);
-const R_TYPE_OPS = new Set<Opcode>(["add", "sub", "and", "or", "xor", "sll", "srl"]);
-const B_TYPE_OPS = new Set<Opcode>(["beq", "bne", "blt"]);
 const INSTRUCTION_SIZE_BYTES = 4;
 const SIGNED_12_MIN = -2048;
 const SIGNED_12_MAX = 2047;
@@ -128,7 +106,7 @@ export function assemble(source: string): AssembleResult {
 }
 
 export function instructionSet(): string[] {
-  return Array.from(ASSEMBLER_MNEMONICS);
+  return [...ASSEMBLER_MNEMONICS];
 }
 
 function parseInstruction(
@@ -139,8 +117,7 @@ function parseInstruction(
 ): Instruction | null {
   const [opToken, rest = ""] = splitWhitespace(parsed.body);
   const mnemonic = opToken.toLowerCase();
-  const op = mnemonic as Opcode;
-  if (!ASSEMBLER_MNEMONICS.has(mnemonic)) {
+  if (!isAssemblerMnemonic(mnemonic)) {
     errors.push({ line: parsed.line, column: 1, message: `Unknown instruction "${opToken}".` });
     return null;
   }
@@ -170,6 +147,11 @@ function parseInstruction(
     };
   }
 
+  if (!isOpcode(mnemonic)) {
+    return fail(`Unsupported instruction "${mnemonic}".`);
+  }
+
+  const op = mnemonic;
   if (isRTypeOpcode(op)) {
     if (args.length !== 3) return fail(`${op} expects rd, rs1, rs2.`);
     const rd = parseRegister(args[0]);
@@ -292,14 +274,6 @@ function parseMemoryOperand(token: string): { offset: number; base: RegisterInde
   const base = parseRegister(match[2]);
   if (offset == null || base == null) return null;
   return { offset, base };
-}
-
-function isRTypeOpcode(op: Opcode): op is RTypeOpcode {
-  return R_TYPE_OPS.has(op);
-}
-
-function isBTypeOpcode(op: Opcode): op is BTypeOpcode {
-  return B_TYPE_OPS.has(op);
 }
 
 function lookupLabel(labels: LabelTable, label: string): ByteAddress | undefined {
