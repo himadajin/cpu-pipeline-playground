@@ -111,6 +111,11 @@ export interface SimulationState {
   current: CycleSnapshot;
 }
 
+export interface SimulationInitialState {
+  registers?: Record<number, number>;
+  memory?: Record<number, number>;
+}
+
 export interface ProgramDocument {
   id: string;
   name: string;

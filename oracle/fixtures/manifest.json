@@ -1,0 +1,64 @@
+{
+  "defaults": {
+    "compareRegisters": [
+      "x0",
+      "x1",
+      "x2",
+      "x3",
+      "x4",
+      "x5",
+      "x6",
+      "x7",
+      "x8",
+      "x9",
+      "x10",
+      "x11",
+      "x12",
+      "x13",
+      "x14",
+      "x15",
+      "x16",
+      "x17",
+      "x18",
+      "x19",
+      "x20",
+      "x21",
+      "x22",
+      "x23",
+      "x24",
+      "x25",
+      "x26",
+      "x27",
+      "x28",
+      "x29",
+      "x30",
+      "x31"
+    ],
+    "compareMemory": [{ "address": "data", "words": 2 }],
+    "initialRegisters": {
+      "x31": "0x80010000"
+    },
+    "initialMemory": [],
+    "maxCycles": 300
+  },
+  "fixtures": [
+    {
+      "id": "add",
+      "file": "add.asm",
+      "kind": "alu",
+      "description": "Covers integer arithmetic, logic, and shifts."
+    },
+    {
+      "id": "load-store",
+      "file": "load-store.asm",
+      "kind": "memory",
+      "description": "Covers store/load behavior against the harness data region."
+    },
+    {
+      "id": "branch",
+      "file": "branch.asm",
+      "kind": "control",
+      "description": "Covers taken branches, loop control, jal link value, and flushed fallthrough work."
+    }
+  ]
+}

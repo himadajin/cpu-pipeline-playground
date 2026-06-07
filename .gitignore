@@ -9,6 +9,10 @@
 /coverage/
 /playwright-report/
 /test-results/
+/oracle/generated/*
+/oracle/signatures/*
+!/oracle/generated/.gitkeep
+!/oracle/signatures/.gitkeep
 
 # Tool caches
 /.vite/
