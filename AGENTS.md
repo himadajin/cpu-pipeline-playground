@@ -4,7 +4,7 @@
 
 CPU Pipeline Playground is a TypeScript + Vite + React app for writing small RISC-V-like assembly programs and observing a 5-stage in-order pipeline.
 
-The product direction is documented in `docs/design.md`. Treat that file as the source of truth for scope and UX intent. The app is intentionally a dense IDE-style workbench, not a marketing page or tutorial-first site.
+The product direction is documented in `docs/design.md`. Treat that file as the source of truth for product scope and UX intent. ISA expansion and RV32I compatibility direction are documented in `docs/rv32i-roadmap.md`. The app is intentionally a dense IDE-style workbench, not a marketing page or tutorial-first site.
 
 ## Architecture
 
@@ -55,9 +55,11 @@ Run the narrowest useful check while iterating, then run the full set before han
 
 ## Simulator Rules
 
-- Preserve the initial instruction subset unless `docs/design.md` is updated:
-  `add`, `sub`, `addi`, `lw`, `sw`, `beq`, `bne`, `blt`, `jal`, `nop`, `and`, `or`, `xor`, `sll`, `srl`.
-- Do not add out-of-order execution, register renaming, ROB, caches, exceptions, interrupts, OS behavior, ABI compatibility, or full RISC-V compatibility without an explicit scope change.
+- Follow `docs/rv32i-roadmap.md` when changing instruction semantics or adding opcodes. Do not add instructions opportunistically outside the agreed phase.
+- Treat RV32I semantic alignment as the direction for implemented base integer instructions. Old behavior that conflicts with RV32I should be treated as a bug unless the roadmap explicitly says otherwise.
+- Keep `nop` and future pseudo instructions in the assembler layer. The simulator should execute expanded real instructions, with source mapping preserved for UI explanation.
+- Do not add out-of-order execution, register renaming, ROB, caches, exceptions, interrupts, OS behavior, ABI compatibility, privileged behavior, `ecall`, `ebreak`, or `fence` without an explicit scope change.
+- Do not overbuild future trap/system/ordering support, but avoid type designs that make those instruction classes impossible to add later.
 - When changing pipeline behavior, update or add Vitest cases for representative commit, memory, forwarding, stall, and flush scenarios.
 - Register `x0` must remain zero.
 - Program edits after a run should invalidate the current simulation instead of silently mutating an in-flight execution.
@@ -74,6 +76,7 @@ Run the narrowest useful check while iterating, then run the full set before han
 ## Testing Guidance
 
 - Add core tests for any assembler or simulator behavior change.
+- For instruction changes, follow the test layering in `docs/rv32i-roadmap.md`: assembler diagnostics, semantic tests, representative pipeline interaction tests, and selective UI/e2e coverage.
 - When changing instruction semantics or oracle fixtures, preserve the fixture principles in `oracle/README.md`.
 - Add React Testing Library tests for UI state changes that do not require a real browser.
 - Add or update Playwright tests for flows involving CodeMirror, timeline selection, layout integrity, or browser storage behavior.
