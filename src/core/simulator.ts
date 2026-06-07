@@ -364,6 +364,18 @@ function runExecute(
       const a = read(slot.instruction.rs1);
       return { result: toInt32(toUint32(a) < toUint32(slot.instruction.imm) ? 1 : 0) };
     }
+    case "andi": {
+      const a = read(slot.instruction.rs1);
+      return { result: toInt32(a & slot.instruction.imm) };
+    }
+    case "ori": {
+      const a = read(slot.instruction.rs1);
+      return { result: toInt32(a | slot.instruction.imm) };
+    }
+    case "xori": {
+      const a = read(slot.instruction.rs1);
+      return { result: toInt32(a ^ slot.instruction.imm) };
+    }
     case "lb":
     case "lw": {
       const a = read(slot.instruction.rs1);

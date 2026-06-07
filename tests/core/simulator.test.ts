@@ -316,6 +316,18 @@ sltiu x8, x2, -1
     expect(simulation.current.registers[8]).toBe(1);
   });
 
+  it("executes immediate bitwise logic with signed 12-bit immediates", () => {
+    const program = assembled(`
+andi x2, x1, 0xff
+ori x3, x1, -1
+xori x4, x1, 0x7ff
+`);
+    const simulation = runSimulation(createSimulation(program, { registers: { 1: 0x12345678 } }));
+    expect(simulation.current.registers[2]).toBe(0x78);
+    expect(simulation.current.registers[3]).toBe(-1);
+    expect(simulation.current.registers[4]).toBe(0x12345187);
+  });
+
   it("loads signed bytes from byte memory", () => {
     const simulation = runSimulation(
       createSimulation(assembled("lb x2, 1(x1)\nlb x3, 2(x1)\n"), {

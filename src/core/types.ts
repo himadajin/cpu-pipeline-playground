@@ -19,6 +19,9 @@ export type Opcode =
   | "addi"
   | "slti"
   | "sltiu"
+  | "andi"
+  | "ori"
+  | "xori"
   | "lb"
   | "lw"
   | "sb"
@@ -54,7 +57,7 @@ interface InstructionBase {
 }
 
 export type RTypeOpcode = "add" | "sub" | "slt" | "sltu" | "and" | "or" | "xor" | "sll" | "srl";
-export type ITypeOpcode = "addi" | "slti" | "sltiu" | "lb" | "lw" | "jalr";
+export type ITypeOpcode = "addi" | "slti" | "sltiu" | "andi" | "ori" | "xori" | "lb" | "lw" | "jalr";
 export type STypeOpcode = "sb" | "sw";
 export type BTypeOpcode = "beq" | "bne" | "blt" | "bge" | "bltu" | "bgeu";
 export type JTypeOpcode = "jal";

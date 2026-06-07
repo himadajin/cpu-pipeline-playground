@@ -163,7 +163,7 @@ function parseInstruction(
     return { ...base, op, rd, rs1, rs2 };
   }
 
-  if (op === "addi" || op === "slti" || op === "sltiu") {
+  if (op === "addi" || op === "slti" || op === "sltiu" || op === "andi" || op === "ori" || op === "xori") {
     if (args.length !== 3) return fail(`${op} expects rd, rs1, imm.`);
     const rd = parseRegister(args[0]);
     const rs1 = parseRegister(args[1]);

@@ -83,6 +83,12 @@
       "file": "branch-family.asm",
       "kind": "control",
       "description": "Covers signed and unsigned branch comparisons."
+    },
+    {
+      "id": "immediate-alu",
+      "file": "immediate-alu.asm",
+      "kind": "alu",
+      "description": "Covers signed 12-bit immediate bitwise logic."
     }
   ]
 }
