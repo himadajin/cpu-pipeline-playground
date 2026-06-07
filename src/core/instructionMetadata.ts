@@ -35,6 +35,15 @@ export const INSTRUCTION_METADATA = {
     operandSyntax: "rd, rs1, rs2",
     description: "Subtract one register from another.",
   },
+  sltu: {
+    format: "R",
+    category: "alu",
+    sources: ["rs1", "rs2"],
+    destination: "rd",
+    immediateKind: null,
+    operandSyntax: "rd, rs1, rs2",
+    description: "Set when rs1 is less than rs2 as uint32.",
+  },
   addi: {
     format: "I",
     category: "alu",
@@ -44,6 +53,15 @@ export const INSTRUCTION_METADATA = {
     operandSyntax: "rd, rs1, imm",
     description: "Add a signed 12-bit immediate.",
   },
+  lb: {
+    format: "I",
+    category: "memory",
+    sources: ["rs1"],
+    destination: "rd",
+    immediateKind: "signed12",
+    operandSyntax: "rd, offset(rs1)",
+    description: "Load a signed byte.",
+  },
   lw: {
     format: "I",
     category: "memory",
@@ -52,6 +70,15 @@ export const INSTRUCTION_METADATA = {
     immediateKind: "signed12",
     operandSyntax: "rd, offset(rs1)",
     description: "Load a little-endian word.",
+  },
+  sb: {
+    format: "S",
+    category: "memory",
+    sources: ["rs1", "rs2"],
+    destination: null,
+    immediateKind: "signed12",
+    operandSyntax: "rs2, offset(rs1)",
+    description: "Store one byte.",
   },
   sw: {
     format: "S",

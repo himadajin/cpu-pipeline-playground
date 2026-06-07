@@ -65,6 +65,12 @@
       "file": "control-upper.asm",
       "kind": "control",
       "description": "Covers jalr control flow plus lui and auipc upper-immediate behavior."
+    },
+    {
+      "id": "compare-byte-memory",
+      "file": "compare-byte-memory.asm",
+      "kind": "memory",
+      "description": "Covers unsigned comparison plus signed byte load and byte store behavior."
     }
   ]
 }

@@ -173,12 +173,12 @@ function parseInstruction(
     return { ...base, op, rd, rs1, imm: toSigned12Immediate(imm) };
   }
 
-  if (op === "lw") {
-    if (args.length !== 2) return fail("lw expects rd, offset(rs1).");
+  if (op === "lb" || op === "lw") {
+    if (args.length !== 2) return fail(`${op} expects rd, offset(rs1).`);
     const rd = parseRegister(args[0]);
     const memory = parseMemoryOperand(args[1]);
-    if (rd == null || !memory) return fail(`Invalid lw operands in "${parsed.body}".`);
-    if (!isSigned12(memory.offset)) return fail("lw offset must be a signed 12-bit value (-2048..2047).");
+    if (rd == null || !memory) return fail(`Invalid ${op} operands in "${parsed.body}".`);
+    if (!isSigned12(memory.offset)) return fail(`${op} offset must be a signed 12-bit value (-2048..2047).`);
     return { ...base, op, rd, rs1: memory.base, imm: toSigned12Immediate(memory.offset) };
   }
 
@@ -191,12 +191,12 @@ function parseInstruction(
     return { ...base, op, rd, rs1: memory.base, imm: toSigned12Immediate(memory.offset) };
   }
 
-  if (op === "sw") {
-    if (args.length !== 2) return fail("sw expects rs2, offset(rs1).");
+  if (op === "sb" || op === "sw") {
+    if (args.length !== 2) return fail(`${op} expects rs2, offset(rs1).`);
     const rs2 = parseRegister(args[0]);
     const memory = parseMemoryOperand(args[1]);
-    if (rs2 == null || !memory) return fail(`Invalid sw operands in "${parsed.body}".`);
-    if (!isSigned12(memory.offset)) return fail("sw offset must be a signed 12-bit value (-2048..2047).");
+    if (rs2 == null || !memory) return fail(`Invalid ${op} operands in "${parsed.body}".`);
+    if (!isSigned12(memory.offset)) return fail(`${op} offset must be a signed 12-bit value (-2048..2047).`);
     return { ...base, op, rs1: memory.base, rs2, imm: toSigned12Immediate(memory.offset) };
   }
 

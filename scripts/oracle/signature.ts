@@ -33,11 +33,20 @@ export function signatureFromSnapshot(fixture: ResolvedOracleFixture, snapshot: 
   for (const range of fixture.compareMemory) {
     for (let offset = 0; offset < range.words; offset += 1) {
       const address = (range.address + offset * 4) | 0;
-      lines.push({ key: `mem[${normalizeAddress(address)}]`, value: normalizeWord(snapshot.memory[address] ?? 0) });
+      lines.push({ key: `mem[${normalizeAddress(address)}]`, value: normalizeWord(readWord(snapshot, address)) });
     }
   }
 
   return formatSignature(lines);
+}
+
+function readWord(snapshot: CycleSnapshot, address: number): number {
+  return (
+    ((snapshot.memory[address] ?? 0) & 0xff) |
+    (((snapshot.memory[(address + 1) | 0] ?? 0) & 0xff) << 8) |
+    (((snapshot.memory[(address + 2) | 0] ?? 0) & 0xff) << 16) |
+    (((snapshot.memory[(address + 3) | 0] ?? 0) & 0xff) << 24)
+  );
 }
 
 export function normalizeAddress(address: number): string {
