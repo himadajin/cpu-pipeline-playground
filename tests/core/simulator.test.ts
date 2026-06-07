@@ -328,6 +328,20 @@ xori x4, x1, 0x7ff
     expect(simulation.current.registers[4]).toBe(0x12345187);
   });
 
+  it("executes register and immediate shift instructions", () => {
+    const program = assembled(`
+sra x3, x1, x2
+slli x4, x1, 1
+srli x5, x1, 1
+srai x6, x1, 1
+`);
+    const simulation = runSimulation(createSimulation(program, { registers: { 1: -8, 2: 1 } }));
+    expect(simulation.current.registers[3]).toBe(-4);
+    expect(simulation.current.registers[4]).toBe(-16);
+    expect(simulation.current.registers[5]).toBe(0x7ffffffc);
+    expect(simulation.current.registers[6]).toBe(-4);
+  });
+
   it("loads signed bytes from byte memory", () => {
     const simulation = runSimulation(
       createSimulation(assembled("lb x2, 1(x1)\nlb x3, 2(x1)\n"), {

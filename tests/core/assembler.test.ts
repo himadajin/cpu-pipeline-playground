@@ -20,6 +20,10 @@ or x7, x6, x1
 xor x8, x7, x2
 sll x9, x8, x1
 srl x10, x9, x1
+sra x10, x9, x1
+slli x10, x9, 1
+srli x10, x9, 1
+srai x10, x9, 1
 sb x10, 1(x1)
 sw x10, 0(x1)
 lb x11, 1(x1)
@@ -73,6 +77,14 @@ nop
     expect(assemble("addi x1, x0, -0x800\n").errors).toEqual([]);
   });
 
+  it("validates shift immediate amounts", () => {
+    const result = assemble("slli x1, x2, 32\nsrli x1, x2, -1\nsrai x1, x2, 1abc\n");
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((error) => error.line)).toEqual([1, 2, 3]);
+    expect(result.errors[0]?.message).toContain("5-bit");
+    expect(assemble("slli x1, x2, 31\nsrli x3, x4, 0\nsrai x5, x6, 1\n").errors).toEqual([]);
+  });
+
   it("parses compare and byte memory operands", () => {
     const result = assemble(
       "slt x1, x2, x3\nsltu x4, x5, x6\nslti x7, x8, -1\nsltiu x9, x10, 1\nandi x11, x12, 0xff\nori x13, x14, -1\nxori x15, x16, 1\nlb x17, -1(x18)\nsb x19, 7(x20)\n",
@@ -87,6 +99,15 @@ nop
     expect(result.instructions[6]).toMatchObject({ op: "xori", rd: 15, rs1: 16, imm: 1 });
     expect(result.instructions[7]).toMatchObject({ op: "lb", rd: 17, rs1: 18, imm: -1 });
     expect(result.instructions[8]).toMatchObject({ op: "sb", rs1: 20, rs2: 19, imm: 7 });
+  });
+
+  it("parses register and immediate shift operands", () => {
+    const result = assemble("sra x1, x2, x3\nslli x4, x5, 31\nsrli x6, x7, 0\nsrai x8, x9, 1\n");
+    expect(result.errors).toEqual([]);
+    expect(result.instructions[0]).toMatchObject({ op: "sra", rd: 1, rs1: 2, rs2: 3 });
+    expect(result.instructions[1]).toMatchObject({ op: "slli", rd: 4, rs1: 5, imm: 31 });
+    expect(result.instructions[2]).toMatchObject({ op: "srli", rd: 6, rs1: 7, imm: 0 });
+    expect(result.instructions[3]).toMatchObject({ op: "srai", rd: 8, rs1: 9, imm: 1 });
   });
 
   it("parses jalr with a signed 12-bit register offset", () => {

@@ -41,6 +41,10 @@ const EXPECTED_OPCODES: Opcode[] = [
   "xor",
   "sll",
   "srl",
+  "sra",
+  "slli",
+  "srli",
+  "srai",
 ];
 
 describe("instruction metadata", () => {

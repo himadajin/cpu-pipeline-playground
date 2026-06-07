@@ -5,6 +5,7 @@ export type ByteAddress = Brand<number, "ByteAddress">;
 export type ByteValue = Brand<number, "ByteValue">;
 export type Int32 = Brand<number, "Int32">;
 export type Signed12Immediate = Brand<number, "Signed12Immediate">;
+export type ShiftAmountImmediate = Brand<number, "ShiftAmountImmediate">;
 export type Upper20Immediate = Brand<number, "Upper20Immediate">;
 
 export type LabelTable = Record<string, ByteAddress>;
@@ -40,7 +41,11 @@ export type Opcode =
   | "or"
   | "xor"
   | "sll"
-  | "srl";
+  | "srl"
+  | "sra"
+  | "slli"
+  | "srli"
+  | "srai";
 
 export type StageName = "IF" | "ID" | "EX" | "MEM" | "WB";
 export type EventKind = "stall" | "flush" | "forward" | "commit" | "memory" | "branch" | "error";
@@ -56,8 +61,9 @@ interface InstructionBase {
   text: string;
 }
 
-export type RTypeOpcode = "add" | "sub" | "slt" | "sltu" | "and" | "or" | "xor" | "sll" | "srl";
+export type RTypeOpcode = "add" | "sub" | "slt" | "sltu" | "and" | "or" | "xor" | "sll" | "srl" | "sra";
 export type ITypeOpcode = "addi" | "slti" | "sltiu" | "andi" | "ori" | "xori" | "lb" | "lw" | "jalr";
+export type ShiftImmediateOpcode = "slli" | "srli" | "srai";
 export type STypeOpcode = "sb" | "sw";
 export type BTypeOpcode = "beq" | "bne" | "blt" | "bge" | "bltu" | "bgeu";
 export type JTypeOpcode = "jal";
@@ -75,6 +81,13 @@ export interface ITypeInstruction extends InstructionBase {
   rd: RegisterIndex;
   rs1: RegisterIndex;
   imm: Signed12Immediate;
+}
+
+export interface ShiftImmediateInstruction extends InstructionBase {
+  op: ShiftImmediateOpcode;
+  rd: RegisterIndex;
+  rs1: RegisterIndex;
+  imm: ShiftAmountImmediate;
 }
 
 export interface STypeInstruction extends InstructionBase {
@@ -108,6 +121,7 @@ export interface UTypeInstruction extends InstructionBase {
 export type Instruction =
   | RTypeInstruction
   | ITypeInstruction
+  | ShiftImmediateInstruction
   | STypeInstruction
   | BTypeInstruction
   | JTypeInstruction

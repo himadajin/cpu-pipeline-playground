@@ -4,7 +4,7 @@ export type InstructionFormat = "R" | "I" | "S" | "B" | "J" | "U";
 export type InstructionCategory = "alu" | "memory" | "control";
 export type SourceOperand = "rs1" | "rs2";
 export type DestinationOperand = "rd";
-export type ImmediateKind = "signed12" | "branchTarget" | "jumpTarget" | "upper20";
+export type ImmediateKind = "signed12" | "shamt5" | "branchTarget" | "jumpTarget" | "upper20";
 
 export interface InstructionMetadata {
   format: InstructionFormat;
@@ -277,6 +277,42 @@ export const INSTRUCTION_METADATA = {
     immediateKind: null,
     operandSyntax: "rd, rs1, rs2",
     description: "Shift right logical by register amount.",
+  },
+  sra: {
+    format: "R",
+    category: "alu",
+    sources: ["rs1", "rs2"],
+    destination: "rd",
+    immediateKind: null,
+    operandSyntax: "rd, rs1, rs2",
+    description: "Shift right arithmetic by register amount.",
+  },
+  slli: {
+    format: "I",
+    category: "alu",
+    sources: ["rs1"],
+    destination: "rd",
+    immediateKind: "shamt5",
+    operandSyntax: "rd, rs1, shamt",
+    description: "Shift left logical by 5-bit immediate amount.",
+  },
+  srli: {
+    format: "I",
+    category: "alu",
+    sources: ["rs1"],
+    destination: "rd",
+    immediateKind: "shamt5",
+    operandSyntax: "rd, rs1, shamt",
+    description: "Shift right logical by 5-bit immediate amount.",
+  },
+  srai: {
+    format: "I",
+    category: "alu",
+    sources: ["rs1"],
+    destination: "rd",
+    immediateKind: "shamt5",
+    operandSyntax: "rd, rs1, shamt",
+    description: "Shift right arithmetic by 5-bit immediate amount.",
   },
 } satisfies Record<Opcode, InstructionMetadata>;
 

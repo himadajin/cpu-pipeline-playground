@@ -89,6 +89,12 @@
       "file": "immediate-alu.asm",
       "kind": "alu",
       "description": "Covers signed 12-bit immediate bitwise logic."
+    },
+    {
+      "id": "shift-family",
+      "file": "shift-family.asm",
+      "kind": "alu",
+      "description": "Covers register and immediate logical and arithmetic shifts."
     }
   ]
 }

@@ -352,6 +352,11 @@ function runExecute(
       const b = read(slot.instruction.rs2);
       return { result: toInt32(a >>> (b & 31)) };
     }
+    case "sra": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
+      return { result: toInt32(a >> (b & 31)) };
+    }
     case "addi": {
       const a = read(slot.instruction.rs1);
       return { result: toInt32(a + slot.instruction.imm) };
@@ -375,6 +380,18 @@ function runExecute(
     case "xori": {
       const a = read(slot.instruction.rs1);
       return { result: toInt32(a ^ slot.instruction.imm) };
+    }
+    case "slli": {
+      const a = read(slot.instruction.rs1);
+      return { result: toInt32(a << slot.instruction.imm) };
+    }
+    case "srli": {
+      const a = read(slot.instruction.rs1);
+      return { result: toInt32(a >>> slot.instruction.imm) };
+    }
+    case "srai": {
+      const a = read(slot.instruction.rs1);
+      return { result: toInt32(a >> slot.instruction.imm) };
     }
     case "lb":
     case "lw": {
