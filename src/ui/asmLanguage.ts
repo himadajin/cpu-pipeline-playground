@@ -5,7 +5,7 @@ import { assemble, instructionSet } from "../core";
 
 const opcodes = instructionSet().join("|");
 
-export function assemblyExtensions(onAssembleErrors: (count: number) => void): Extension[] {
+export function assemblyExtensions(): Extension[] {
   return [
     EditorView.lineWrapping,
     EditorView.theme({
@@ -30,7 +30,6 @@ export function assemblyExtensions(onAssembleErrors: (count: number) => void): E
     }),
     linter((view) => {
       const result = assemble(view.state.doc.toString());
-      onAssembleErrors(result.errors.length);
       return result.errors.map<Diagnostic>((error) => {
         const line = view.state.doc.line(error.line);
         return {
