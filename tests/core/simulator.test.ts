@@ -155,9 +155,7 @@ jal x3, done
 done:
 addi x4, x0, 1
 `);
-    const simulation = runSimulation(
-      createSimulation(program, { memory: { 16: 1, 17: 0, 18: 0, 19: 0 } }),
-    );
+    const simulation = runSimulation(createSimulation(program, { memory: { 16: 1, 17: 0, 18: 0, 19: 0 } }));
 
     expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
       false,

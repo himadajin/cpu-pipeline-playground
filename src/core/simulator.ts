@@ -243,12 +243,7 @@ function runMemory(
       return { halted: true };
     }
     const value = toUint32(slot.storeValue ?? 0);
-    const bytes = [
-      toByteValue(value),
-      toByteValue(value >>> 8),
-      toByteValue(value >>> 16),
-      toByteValue(value >>> 24),
-    ];
+    const bytes = [toByteValue(value), toByteValue(value >>> 8), toByteValue(value >>> 16), toByteValue(value >>> 24)];
     bytes.forEach((after, offset) => {
       const byteAddress = toByteAddress(address + offset);
       const before = memory[byteAddress] ?? toByteValue(0);
@@ -349,8 +344,7 @@ function runExecute(
       const b = read(slot.instruction.rs2);
       return {
         taken: toInt32(a) < toInt32(b),
-        nextPc:
-          toInt32(a) < toInt32(b) ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
+        nextPc: toInt32(a) < toInt32(b) ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
       };
     }
     case "jal":
