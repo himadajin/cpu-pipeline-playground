@@ -9,7 +9,7 @@ import {
   type Instruction,
   type Opcode,
 } from "../../src/core";
-import { toByteAddress, toRegisterIndex, toSigned12Immediate } from "../../src/core/numbers";
+import { toByteAddress, toRegisterIndex, toSigned12Immediate, toUpper20Immediate } from "../../src/core/numbers";
 
 const EXPECTED_OPCODES: Opcode[] = [
   "add",
@@ -21,6 +21,9 @@ const EXPECTED_OPCODES: Opcode[] = [
   "bne",
   "blt",
   "jal",
+  "jalr",
+  "lui",
+  "auipc",
   "and",
   "or",
   "xor",
@@ -108,5 +111,33 @@ describe("instruction metadata", () => {
     expect(sourceRegisters(addi)).toEqual([10]);
     expect(destinationRegister(addi)).toBe(9);
     expect(writesRegister(addi)).toBe(true);
+  });
+
+  it("marks jalr and upper-immediate instructions by their architectural operands", () => {
+    const jalr: Instruction = {
+      id: 0,
+      op: "jalr",
+      rd: toRegisterIndex(1),
+      rs1: toRegisterIndex(2),
+      imm: toSigned12Immediate(4),
+      source: { line: 1, text: "jalr x1, 4(x2)" },
+      text: "jalr x1, 4(x2)",
+    };
+    const lui: Instruction = {
+      id: 1,
+      op: "lui",
+      rd: toRegisterIndex(3),
+      imm: toUpper20Immediate(0x12345),
+      source: { line: 2, text: "lui x3, 0x12345" },
+      text: "lui x3, 0x12345",
+    };
+
+    expect(sourceRegisters(jalr)).toEqual([2]);
+    expect(destinationRegister(jalr)).toBe(1);
+    expect(writesRegister(jalr)).toBe(true);
+
+    expect(sourceRegisters(lui)).toEqual([]);
+    expect(destinationRegister(lui)).toBe(3);
+    expect(writesRegister(lui)).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import type { ByteAddress, ByteValue, Int32, RegisterIndex, Signed12Immediate } from "./types";
+import type { ByteAddress, ByteValue, Int32, RegisterIndex, Signed12Immediate, Upper20Immediate } from "./types";
 
 export function toInt32(value: number): Int32 {
   return (value | 0) as Int32;
@@ -26,4 +26,8 @@ export function toRegisterIndex(value: number): RegisterIndex {
 
 export function toSigned12Immediate(value: number): Signed12Immediate {
   return value as Signed12Immediate;
+}
+
+export function toUpper20Immediate(value: number): Upper20Immediate {
+  return value as Upper20Immediate;
 }

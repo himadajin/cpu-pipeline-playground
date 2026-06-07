@@ -19,6 +19,9 @@ beq x10, x9, done
 bne x10, x0, done
 blt x0, x10, done
 jal x0, done
+jalr x11, 0(x1)
+lui x12, 0x12345
+auipc x13, 1
 nop
 done:
 nop
@@ -54,6 +57,29 @@ nop
     expect(result.ok).toBe(false);
     expect(result.errors.map((error) => error.line)).toEqual([1, 2, 3, 4]);
     expect(assemble("addi x1, x0, -0x800\n").errors).toEqual([]);
+  });
+
+  it("parses jalr with a signed 12-bit register offset", () => {
+    const result = assemble("jalr x1, -4(x2)\n");
+    expect(result.errors).toEqual([]);
+    expect(result.instructions[0]).toMatchObject({ op: "jalr", rd: 1, rs1: 2, imm: -4 });
+
+    const invalid = assemble("jalr x1, 2048(x2)\njalr x1, x2, 0\n");
+    expect(invalid.ok).toBe(false);
+    expect(invalid.errors.map((error) => error.line)).toEqual([1, 2]);
+    expect(invalid.errors[0]?.message).toContain("signed 12-bit");
+  });
+
+  it("validates upper 20-bit immediates for lui and auipc", () => {
+    const result = assemble("lui x1, 0xfffff\nauipc x2, 0\n");
+    expect(result.errors).toEqual([]);
+    expect(result.instructions[0]).toMatchObject({ op: "lui", rd: 1, imm: 0xfffff });
+    expect(result.instructions[1]).toMatchObject({ op: "auipc", rd: 2, imm: 0 });
+
+    const invalid = assemble("lui x1, 0x100000\nauipc x2, -1\n");
+    expect(invalid.ok).toBe(false);
+    expect(invalid.errors.map((error) => error.line)).toEqual([1, 2]);
+    expect(invalid.errors.every((error) => error.message.includes("20-bit"))).toBe(true);
   });
 
   it("validates PC-relative branch target range", () => {

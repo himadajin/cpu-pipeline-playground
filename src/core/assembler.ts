@@ -1,4 +1,4 @@
-import { toByteAddress, toRegisterIndex, toSigned12Immediate } from "./numbers";
+import { toByteAddress, toRegisterIndex, toSigned12Immediate, toUpper20Immediate } from "./numbers";
 import {
   ASSEMBLER_MNEMONICS,
   isAssemblerMnemonic,
@@ -15,6 +15,8 @@ const B_OFFSET_MIN = -4096;
 const B_OFFSET_MAX = 4094;
 const J_OFFSET_MIN = -1_048_576;
 const J_OFFSET_MAX = 1_048_574;
+const UPPER_20_MIN = 0;
+const UPPER_20_MAX = 0xfffff;
 
 const REGISTER_ALIASES: Record<string, number> = {
   zero: 0,
@@ -180,6 +182,15 @@ function parseInstruction(
     return { ...base, op, rd, rs1: memory.base, imm: toSigned12Immediate(memory.offset) };
   }
 
+  if (op === "jalr") {
+    if (args.length !== 2) return fail("jalr expects rd, offset(rs1).");
+    const rd = parseRegister(args[0]);
+    const memory = parseMemoryOperand(args[1]);
+    if (rd == null || !memory) return fail(`Invalid jalr operands in "${parsed.body}".`);
+    if (!isSigned12(memory.offset)) return fail("jalr offset must be a signed 12-bit value (-2048..2047).");
+    return { ...base, op, rd, rs1: memory.base, imm: toSigned12Immediate(memory.offset) };
+  }
+
   if (op === "sw") {
     if (args.length !== 2) return fail("sw expects rs2, offset(rs1).");
     const rs2 = parseRegister(args[0]);
@@ -214,6 +225,15 @@ function parseInstruction(
       return fail("jal target must be 4-byte aligned and fit a signed 21-bit PC-relative offset.");
     }
     return { ...base, op, rd, target, label: args[1] };
+  }
+
+  if (op === "lui" || op === "auipc") {
+    if (args.length !== 2) return fail(`${op} expects rd, imm20.`);
+    const rd = parseRegister(args[0]);
+    const imm = parseImmediate(args[1]);
+    if (rd == null || imm == null) return fail(`Invalid ${op} operands in "${parsed.body}".`);
+    if (!isUpper20(imm)) return fail(`${op} immediate must be a 20-bit value (0..0xfffff).`);
+    return { ...base, op, rd, imm: toUpper20Immediate(imm) };
   }
 
   return fail(`Unsupported instruction "${op}".`);
@@ -265,6 +285,10 @@ function isBranchOffset(value: number): boolean {
 
 function isJumpOffset(value: number): boolean {
   return Number.isInteger(value) && value >= J_OFFSET_MIN && value <= J_OFFSET_MAX && value % 2 === 0;
+}
+
+function isUpper20(value: number): boolean {
+  return Number.isInteger(value) && value >= UPPER_20_MIN && value <= UPPER_20_MAX;
 }
 
 function parseMemoryOperand(token: string): { offset: number; base: RegisterIndex } | null {

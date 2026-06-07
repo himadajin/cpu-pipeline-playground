@@ -5,6 +5,7 @@ export type ByteAddress = Brand<number, "ByteAddress">;
 export type ByteValue = Brand<number, "ByteValue">;
 export type Int32 = Brand<number, "Int32">;
 export type Signed12Immediate = Brand<number, "Signed12Immediate">;
+export type Upper20Immediate = Brand<number, "Upper20Immediate">;
 
 export type LabelTable = Record<string, ByteAddress>;
 export type ByteMemory = Record<number, ByteValue>;
@@ -20,6 +21,9 @@ export type Opcode =
   | "bne"
   | "blt"
   | "jal"
+  | "jalr"
+  | "lui"
+  | "auipc"
   | "and"
   | "or"
   | "xor"
@@ -41,10 +45,11 @@ interface InstructionBase {
 }
 
 export type RTypeOpcode = "add" | "sub" | "and" | "or" | "xor" | "sll" | "srl";
-export type ITypeOpcode = "addi" | "lw";
+export type ITypeOpcode = "addi" | "lw" | "jalr";
 export type STypeOpcode = "sw";
 export type BTypeOpcode = "beq" | "bne" | "blt";
 export type JTypeOpcode = "jal";
+export type UTypeOpcode = "lui" | "auipc";
 
 export interface RTypeInstruction extends InstructionBase {
   op: RTypeOpcode;
@@ -82,7 +87,19 @@ export interface JTypeInstruction extends InstructionBase {
   label: string;
 }
 
-export type Instruction = RTypeInstruction | ITypeInstruction | STypeInstruction | BTypeInstruction | JTypeInstruction;
+export interface UTypeInstruction extends InstructionBase {
+  op: UTypeOpcode;
+  rd: RegisterIndex;
+  imm: Upper20Immediate;
+}
+
+export type Instruction =
+  | RTypeInstruction
+  | ITypeInstruction
+  | STypeInstruction
+  | BTypeInstruction
+  | JTypeInstruction
+  | UTypeInstruction;
 
 export interface AssembleError {
   line: number;
