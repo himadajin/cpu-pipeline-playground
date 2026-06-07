@@ -1,4 +1,15 @@
-import type { AssembleError, AssembleResult, Instruction, Opcode } from "./types";
+import { toByteAddress, toRegisterIndex, toSigned12Immediate } from "./numbers";
+import type {
+  AssembleError,
+  AssembleResult,
+  BTypeOpcode,
+  ByteAddress,
+  Instruction,
+  LabelTable,
+  Opcode,
+  RegisterIndex,
+  RTypeOpcode,
+} from "./types";
 
 const INSTRUCTION_SET = new Set<Opcode>([
   "add",
@@ -17,6 +28,8 @@ const INSTRUCTION_SET = new Set<Opcode>([
   "srl",
 ]);
 const ASSEMBLER_MNEMONICS = new Set<string>([...INSTRUCTION_SET, "nop"]);
+const R_TYPE_OPS = new Set<Opcode>(["add", "sub", "and", "or", "xor", "sll", "srl"]);
+const B_TYPE_OPS = new Set<Opcode>(["beq", "bne", "blt"]);
 const INSTRUCTION_SIZE_BYTES = 4;
 const SIGNED_12_MIN = -2048;
 const SIGNED_12_MAX = 2047;
@@ -65,14 +78,14 @@ interface ParsedLine {
   line: number;
   text: string;
   body: string;
-  pc: number;
+  pc: ByteAddress;
 }
 
 export function assemble(source: string): AssembleResult {
-  const labels: Record<string, number> = {};
+  const labels: LabelTable = {};
   const errors: AssembleError[] = [];
   const parsedLines: ParsedLine[] = [];
-  let pc = 0;
+  let pc = toByteAddress(0);
 
   source.split(/\r?\n/).forEach((raw, index) => {
     const line = index + 1;
@@ -97,7 +110,7 @@ export function assemble(source: string): AssembleResult {
     }
 
     parsedLines.push({ line, text, body, pc });
-    pc += INSTRUCTION_SIZE_BYTES;
+    pc = toByteAddress(pc + INSTRUCTION_SIZE_BYTES);
   });
 
   const instructions: Instruction[] = [];
@@ -121,7 +134,7 @@ export function instructionSet(): string[] {
 function parseInstruction(
   parsed: ParsedLine,
   id: number,
-  labels: Record<string, number>,
+  labels: LabelTable,
   errors: AssembleError[],
 ): Instruction | null {
   const [opToken, rest = ""] = splitWhitespace(parsed.body);
@@ -142,23 +155,28 @@ function parseInstruction(
   };
   const base = {
     id,
-    op,
     source: { line: parsed.line, text: parsed.text },
     text: parsed.body,
   };
 
   if (mnemonic === "nop") {
     if (args.length !== 0) return fail("nop does not take operands.");
-    return { ...base, op: "addi", rd: 0, rs1: 0, imm: 0 };
+    return {
+      ...base,
+      op: "addi",
+      rd: toRegisterIndex(0),
+      rs1: toRegisterIndex(0),
+      imm: toSigned12Immediate(0),
+    };
   }
 
-  if (["add", "sub", "and", "or", "xor", "sll", "srl"].includes(op)) {
+  if (isRTypeOpcode(op)) {
     if (args.length !== 3) return fail(`${op} expects rd, rs1, rs2.`);
     const rd = parseRegister(args[0]);
     const rs1 = parseRegister(args[1]);
     const rs2 = parseRegister(args[2]);
     if (rd == null || rs1 == null || rs2 == null) return fail(`Invalid register in "${parsed.body}".`);
-    return { ...base, rd, rs1, rs2 };
+    return { ...base, op, rd, rs1, rs2 };
   }
 
   if (op === "addi") {
@@ -168,7 +186,7 @@ function parseInstruction(
     const imm = parseImmediate(args[2]);
     if (rd == null || rs1 == null || imm == null) return fail(`Invalid addi operands in "${parsed.body}".`);
     if (!isSigned12(imm)) return fail("addi immediate must be a signed 12-bit value (-2048..2047).");
-    return { ...base, rd, rs1, imm };
+    return { ...base, op, rd, rs1, imm: toSigned12Immediate(imm) };
   }
 
   if (op === "lw") {
@@ -177,7 +195,7 @@ function parseInstruction(
     const memory = parseMemoryOperand(args[1]);
     if (rd == null || !memory) return fail(`Invalid lw operands in "${parsed.body}".`);
     if (!isSigned12(memory.offset)) return fail("lw offset must be a signed 12-bit value (-2048..2047).");
-    return { ...base, rd, rs1: memory.base, imm: memory.offset };
+    return { ...base, op, rd, rs1: memory.base, imm: toSigned12Immediate(memory.offset) };
   }
 
   if (op === "sw") {
@@ -186,34 +204,34 @@ function parseInstruction(
     const memory = parseMemoryOperand(args[1]);
     if (rs2 == null || !memory) return fail(`Invalid sw operands in "${parsed.body}".`);
     if (!isSigned12(memory.offset)) return fail("sw offset must be a signed 12-bit value (-2048..2047).");
-    return { ...base, rs1: memory.base, rs2, imm: memory.offset };
+    return { ...base, op, rs1: memory.base, rs2, imm: toSigned12Immediate(memory.offset) };
   }
 
-  if (["beq", "bne", "blt"].includes(op)) {
+  if (isBTypeOpcode(op)) {
     if (args.length !== 3) return fail(`${op} expects rs1, rs2, label.`);
     const rs1 = parseRegister(args[0]);
     const rs2 = parseRegister(args[1]);
-    const target = labels[args[2]];
     if (rs1 == null || rs2 == null) return fail(`Invalid branch registers in "${parsed.body}".`);
+    const target = lookupLabel(labels, args[2]);
     if (target === undefined) return fail(`Unknown label "${args[2]}".`);
     const offset = target - parsed.pc;
     if (!isAlignedInstructionAddress(target) || !isBranchOffset(offset)) {
       return fail(`${op} target must be 4-byte aligned and fit a signed 13-bit PC-relative offset.`);
     }
-    return { ...base, rs1, rs2, target, label: args[2] };
+    return { ...base, op, rs1, rs2, target, label: args[2] };
   }
 
   if (op === "jal") {
     if (args.length !== 2) return fail("jal expects rd, label.");
     const rd = parseRegister(args[0]);
-    const target = labels[args[1]];
     if (rd == null) return fail(`Invalid jal destination in "${parsed.body}".`);
+    const target = lookupLabel(labels, args[1]);
     if (target === undefined) return fail(`Unknown label "${args[1]}".`);
     const offset = target - parsed.pc;
     if (!isAlignedInstructionAddress(target) || !isJumpOffset(offset)) {
       return fail("jal target must be 4-byte aligned and fit a signed 21-bit PC-relative offset.");
     }
-    return { ...base, rd, target, label: args[1] };
+    return { ...base, op, rd, target, label: args[1] };
   }
 
   return fail(`Unsupported instruction "${op}".`);
@@ -233,11 +251,12 @@ function splitWhitespace(value: string): [string, string] {
   return [match?.[1] ?? "", match?.[2] ?? ""];
 }
 
-function parseRegister(token: string): number | null {
+function parseRegister(token: string): RegisterIndex | null {
   const normalized = token.trim().toLowerCase();
   const xMatch = /^x([0-9]|[12][0-9]|3[01])$/.exec(normalized);
-  if (xMatch) return Number(xMatch[1]);
-  return REGISTER_ALIASES[normalized] ?? null;
+  if (xMatch) return toRegisterIndex(Number(xMatch[1]));
+  const alias = REGISTER_ALIASES[normalized];
+  return alias == null ? null : toRegisterIndex(alias);
 }
 
 function parseImmediate(token: string): number | null {
@@ -254,7 +273,7 @@ function isSigned12(value: number): boolean {
   return Number.isInteger(value) && value >= SIGNED_12_MIN && value <= SIGNED_12_MAX;
 }
 
-function isAlignedInstructionAddress(value: number): boolean {
+function isAlignedInstructionAddress(value: ByteAddress): boolean {
   return value % INSTRUCTION_SIZE_BYTES === 0;
 }
 
@@ -266,11 +285,23 @@ function isJumpOffset(value: number): boolean {
   return Number.isInteger(value) && value >= J_OFFSET_MIN && value <= J_OFFSET_MAX && value % 2 === 0;
 }
 
-function parseMemoryOperand(token: string): { offset: number; base: number } | null {
+function parseMemoryOperand(token: string): { offset: number; base: RegisterIndex } | null {
   const match = /^(-?(?:0x[0-9a-f]+|\d+))\(([^)]+)\)$/i.exec(token.trim());
   if (!match) return null;
   const offset = parseImmediate(match[1]);
   const base = parseRegister(match[2]);
   if (offset == null || base == null) return null;
   return { offset, base };
+}
+
+function isRTypeOpcode(op: Opcode): op is RTypeOpcode {
+  return R_TYPE_OPS.has(op);
+}
+
+function isBTypeOpcode(op: Opcode): op is BTypeOpcode {
+  return B_TYPE_OPS.has(op);
+}
+
+function lookupLabel(labels: LabelTable, label: string): ByteAddress | undefined {
+  return Object.prototype.hasOwnProperty.call(labels, label) ? labels[label] : undefined;
 }

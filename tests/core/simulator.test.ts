@@ -116,10 +116,53 @@ target:
 addi x3, x0, 7
 `);
     const simulation = runSimulation(createSimulation(program));
+    expect(program[0]?.op).toBe("jal");
+    if (program[0]?.op !== "jal") throw new Error("expected jal instruction");
     expect(program[0].target).toBe(8);
     expect(simulation.current.registers[1]).toBe(4);
     expect(simulation.current.registers[2]).toBe(0);
     expect(simulation.current.registers[3]).toBe(7);
+  });
+
+  it("uses instruction forms for writeback and source register behavior", () => {
+    const program = assembled(`
+addi x1, x0, 16
+addi x2, x0, 4
+sw x2, 0(x1)
+lw x3, 0(x1)
+add x4, x2, x3
+jal x5, done
+done:
+addi x6, x0, 1
+`);
+    const simulation = runSimulation(createSimulation(program));
+    const commitEvents = simulation.history.flatMap((snapshot) =>
+      snapshot.events.filter((event) => event.kind === "commit"),
+    );
+
+    expect(commitEvents.some((event) => event.instructionId === program[2]?.id)).toBe(false);
+    expect(commitEvents.some((event) => event.instructionId === program[3]?.id)).toBe(true);
+    expect(commitEvents.some((event) => event.instructionId === program[4]?.id)).toBe(true);
+    expect(commitEvents.some((event) => event.instructionId === program[5]?.id)).toBe(true);
+    expect(simulation.current.registers[5]).toBe(24);
+  });
+
+  it("does not treat jal as a load-use source register consumer", () => {
+    const program = assembled(`
+addi x1, x0, 16
+lw x2, 0(x1)
+jal x3, done
+done:
+addi x4, x0, 1
+`);
+    const simulation = runSimulation(
+      createSimulation(program, { memory: { 16: 1, 17: 0, 18: 0, 19: 0 } }),
+    );
+
+    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
+      false,
+    );
+    expect(simulation.current.registers[3]).toBe(12);
   });
 
   it("wraps ALU results to 32 bits", () => {

@@ -1,9 +1,14 @@
 import type {
   CycleSnapshot,
+  ByteAddress,
+  ByteMemory,
   Instruction,
+  Int32,
   MemoryDiff,
   PipelineEvent,
   RegisterDiff,
+  RegisterFile,
+  RegisterIndex,
   SimulationState,
   StageName,
   StageSlot,
@@ -11,24 +16,24 @@ import type {
   TimelineCell,
   SimulationInitialState,
 } from "./types";
-import { toInt32, toUint32 } from "./numbers";
+import { toByteAddress, toByteValue, toInt32, toRegisterIndex, toSigned12Immediate, toUint32 } from "./numbers";
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
 const INSTRUCTION_SIZE_BYTES = 4;
 
 export function createSimulation(program: Instruction[], initialState: SimulationInitialState = {}): SimulationState {
-  const registers = Array.from({ length: 32 }, () => 0);
+  const registers: RegisterFile = Array.from({ length: 32 }, () => toInt32(0));
   for (const [register, value] of Object.entries(initialState.registers ?? {})) {
     const index = Number(register);
     if (Number.isInteger(index) && index > 0 && index < 32) {
       registers[index] = toInt32(value);
     }
   }
-  registers[0] = 0;
+  registers[0] = toInt32(0);
 
   const current: CycleSnapshot = {
     cycle: 0,
-    pc: 0,
+    pc: toByteAddress(0),
     stages: emptyStages(),
     registers,
     memory: normalizeInitialMemory(initialState.memory ?? {}),
@@ -124,10 +129,10 @@ export function stepSimulation(state: SimulationState): SimulationState {
   } else if (!stall && !memOutput?.halted) {
     const fetched = fetchInstruction(state.program, previous.pc);
     nextStages.IF = fetched;
-    pc = fetched && !fetched.halted ? previous.pc + INSTRUCTION_SIZE_BYTES : previous.pc;
+    pc = fetched && !fetched.halted ? toByteAddress(previous.pc + INSTRUCTION_SIZE_BYTES) : previous.pc;
   }
 
-  if (registers[0] !== 0) registers[0] = 0;
+  if (registers[0] !== 0) registers[0] = toInt32(0);
   const timeline = buildTimeline(cycle, nextStages, events);
   const halted =
     Boolean(memOutput?.halted || nextStages.IF?.halted) ||
@@ -156,7 +161,7 @@ function cloneStages(stages: StageSlots): StageSlots {
   return Object.fromEntries(STAGES.map((stage) => [stage, stages[stage] ? { ...stages[stage]! } : null])) as StageSlots;
 }
 
-function fetchInstruction(program: Instruction[], pc: number): StageSlot | null {
+function fetchInstruction(program: Instruction[], pc: ByteAddress): StageSlot | null {
   if (pc % INSTRUCTION_SIZE_BYTES !== 0) {
     return {
       instructionId: -1,
@@ -164,9 +169,9 @@ function fetchInstruction(program: Instruction[], pc: number): StageSlot | null 
       instruction: {
         id: -1,
         op: "addi",
-        rd: 0,
-        rs1: 0,
-        imm: 0,
+        rd: toRegisterIndex(0),
+        rs1: toRegisterIndex(0),
+        imm: toSigned12Immediate(0),
         source: { line: 0, text: "" },
         text: `misaligned fetch at ${pc}`,
       },
@@ -181,38 +186,40 @@ function fetchInstruction(program: Instruction[], pc: number): StageSlot | null 
 function commitWriteback(
   cycle: number,
   slot: StageSlot | null,
-  registers: number[],
+  registers: RegisterFile,
   diffs: RegisterDiff[],
   events: PipelineEvent[],
 ) {
-  if (!slot || slot.instruction.rd == null || slot.instruction.rd === 0) return;
+  if (!slot) return;
+  const rd = destinationRegister(slot.instruction);
+  if (rd == null || rd === 0) return;
   const value = writebackValue(slot);
   if (value == null) return;
-  const before = registers[slot.instruction.rd] ?? 0;
+  const before = registers[rd] ?? toInt32(0);
   const after = toInt32(value);
-  registers[slot.instruction.rd] = after;
-  diffs.push({ register: slot.instruction.rd, before, after });
+  registers[rd] = after;
+  diffs.push({ register: rd, before, after });
   events.push({
     id: eventId(cycle, "commit", slot.instructionId),
     cycle,
     instructionId: slot.instructionId,
     kind: "commit",
     label: "commit",
-    message: `${slot.instruction.text} writes x${slot.instruction.rd}: ${before} -> ${after}.`,
-    detail: { register: `x${slot.instruction.rd}`, before, after },
+    message: `${slot.instruction.text} writes x${rd}: ${before} -> ${after}.`,
+    detail: { register: `x${rd}`, before, after },
   });
 }
 
 function runMemory(
   cycle: number,
   slot: StageSlot | null,
-  memory: Record<number, number>,
+  memory: ByteMemory,
   diffs: MemoryDiff[],
   events: PipelineEvent[],
 ): Partial<StageSlot> | null {
   if (!slot) return null;
   if (slot.instruction.op === "lw") {
-    const address = slot.address ?? 0;
+    const address = slot.address ?? toByteAddress(0);
     if (!isAlignedWordAddress(address)) {
       events.push(errorEvent(cycle, slot, `${slot.instruction.text} cannot load misaligned word address ${address}.`));
       return { halted: true };
@@ -230,16 +237,21 @@ function runMemory(
     return { loadedValue };
   }
   if (slot.instruction.op === "sw") {
-    const address = slot.address ?? 0;
+    const address = slot.address ?? toByteAddress(0);
     if (!isAlignedWordAddress(address)) {
       events.push(errorEvent(cycle, slot, `${slot.instruction.text} cannot store misaligned word address ${address}.`));
       return { halted: true };
     }
     const value = toUint32(slot.storeValue ?? 0);
-    const bytes = [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
+    const bytes = [
+      toByteValue(value),
+      toByteValue(value >>> 8),
+      toByteValue(value >>> 16),
+      toByteValue(value >>> 24),
+    ];
     bytes.forEach((after, offset) => {
-      const byteAddress = address + offset;
-      const before = memory[byteAddress] ?? 0;
+      const byteAddress = toByteAddress(address + offset);
+      const before = memory[byteAddress] ?? toByteValue(0);
       memory[byteAddress] = after;
       diffs.push({ address: byteAddress, before, after });
     });
@@ -259,76 +271,117 @@ function runMemory(
 function runExecute(
   cycle: number,
   slot: StageSlot | null,
-  registers: number[],
+  registers: RegisterFile,
   memOutput: Partial<StageSlot> | null,
-  wbOutput: number | null,
+  wbOutput: Int32 | null,
   events: PipelineEvent[],
 ): Partial<StageSlot> | null {
   if (!slot) return null;
-  const read = (register?: number) => readRegister(cycle, slot, register, registers, memOutput, wbOutput, events);
-  const a = read(slot.instruction.rs1);
-  const b = read(slot.instruction.rs2);
-  const imm = slot.instruction.imm ?? 0;
+  const read = (register: RegisterIndex) => readRegister(cycle, slot, register, registers, memOutput, wbOutput, events);
 
   switch (slot.instruction.op) {
-    case "add":
+    case "add": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
       return { result: toInt32(a + b) };
-    case "sub":
+    }
+    case "sub": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
       return { result: toInt32(a - b) };
-    case "and":
+    }
+    case "and": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
       return { result: toInt32(a & b) };
-    case "or":
+    }
+    case "or": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
       return { result: toInt32(a | b) };
-    case "xor":
+    }
+    case "xor": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
       return { result: toInt32(a ^ b) };
-    case "sll":
+    }
+    case "sll": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
       return { result: toInt32(a << (b & 31)) };
-    case "srl":
+    }
+    case "srl": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
       return { result: toInt32(a >>> (b & 31)) };
-    case "addi":
-      return { result: toInt32(a + imm) };
-    case "lw":
-      return { address: toInt32(a + imm) };
-    case "sw":
-      return { address: toInt32(a + imm), storeValue: b };
-    case "beq":
-      return { taken: a === b, nextPc: a === b ? slot.instruction.target : slot.pc + INSTRUCTION_SIZE_BYTES };
-    case "bne":
-      return { taken: a !== b, nextPc: a !== b ? slot.instruction.target : slot.pc + INSTRUCTION_SIZE_BYTES };
-    case "blt":
+    }
+    case "addi": {
+      const a = read(slot.instruction.rs1);
+      return { result: toInt32(a + slot.instruction.imm) };
+    }
+    case "lw": {
+      const a = read(slot.instruction.rs1);
+      return { address: toByteAddress(toInt32(a + slot.instruction.imm)) };
+    }
+    case "sw": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
+      return { address: toByteAddress(toInt32(a + slot.instruction.imm)), storeValue: b };
+    }
+    case "beq": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
+      return {
+        taken: a === b,
+        nextPc: a === b ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
+      };
+    }
+    case "bne": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
+      return {
+        taken: a !== b,
+        nextPc: a !== b ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
+      };
+    }
+    case "blt": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
       return {
         taken: toInt32(a) < toInt32(b),
-        nextPc: toInt32(a) < toInt32(b) ? slot.instruction.target : slot.pc + INSTRUCTION_SIZE_BYTES,
+        nextPc:
+          toInt32(a) < toInt32(b) ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
       };
+    }
     case "jal":
-      return { result: slot.pc + INSTRUCTION_SIZE_BYTES, taken: true, nextPc: slot.instruction.target };
+      return { result: toInt32(slot.pc + INSTRUCTION_SIZE_BYTES), taken: true, nextPc: slot.instruction.target };
   }
 }
 
 function readRegister(
   cycle: number,
   consumer: StageSlot,
-  register: number | undefined,
-  registers: number[],
+  register: RegisterIndex,
+  registers: RegisterFile,
   memOutput: Partial<StageSlot> | null,
-  wbOutput: number | null,
+  wbOutput: Int32 | null,
   events: PipelineEvent[],
-): number {
-  if (register == null || register === 0) return 0;
+): Int32 {
+  if (register === 0) return toInt32(0);
   const memSlot = consumerStagePeer(consumer, "MEM");
-  if (memSlot?.instruction.rd === register) {
-    const value = memOutput?.loadedValue ?? memSlot.result;
+  if (destinationRegister(memSlot?.instruction) === register) {
+    const value = memOutput?.loadedValue ?? memSlot?.result;
     if (value != null) {
       events.push(forwardEvent(cycle, consumer, register, "MEM", value));
       return value;
     }
   }
   const wbSlot = consumerStagePeer(consumer, "WB");
-  if (wbSlot?.instruction.rd === register && wbOutput != null) {
+  if (destinationRegister(wbSlot?.instruction) === register && wbOutput != null) {
     events.push(forwardEvent(cycle, consumer, register, "WB", wbOutput));
     return wbOutput;
   }
-  return registers[register] ?? 0;
+  return registers[register] ?? toInt32(0);
 }
 
 let peerStages: StageSlots = emptyStages();
@@ -338,14 +391,14 @@ function consumerStagePeer(_consumer: StageSlot, stage: StageName): StageSlot | 
 }
 
 function shouldStallForLoadUse(id: StageSlot | null, ex: StageSlot | null): boolean {
-  if (!id || !ex || ex.instruction.op !== "lw" || ex.instruction.rd == null) return false;
-  return [id.instruction.rs1, id.instruction.rs2].includes(ex.instruction.rd);
+  if (!id || !ex || ex.instruction.op !== "lw") return false;
+  return sourceRegisters(id.instruction).includes(ex.instruction.rd);
 }
 
-function writebackValue(slot: StageSlot | null): number | null {
+function writebackValue(slot: StageSlot | null): Int32 | null {
   if (!slot) return null;
   if (slot.instruction.op === "lw") return slot.loadedValue ?? null;
-  if (slot.instruction.op === "jal") return slot.result ?? slot.pc + INSTRUCTION_SIZE_BYTES;
+  if (slot.instruction.op === "jal") return slot.result ?? toInt32(slot.pc + INSTRUCTION_SIZE_BYTES);
   return slot.result ?? null;
 }
 
@@ -373,9 +426,9 @@ function buildTimeline(cycle: number, stages: StageSlots, events: PipelineEvent[
 function forwardEvent(
   cycle: number,
   consumer: StageSlot,
-  register: number,
+  register: RegisterIndex,
   from: StageName,
-  value: number,
+  value: Int32,
 ): PipelineEvent {
   return {
     id: eventId(cycle, `forward-${from}-x${register}`, consumer.instructionId),
@@ -392,18 +445,18 @@ function eventId(cycle: number, label: string, instructionId?: number): string {
   return `${cycle}:${instructionId ?? "global"}:${label}`;
 }
 
-function normalizeInitialMemory(memory: Record<number, number>): Record<number, number> {
-  const normalized: Record<number, number> = {};
+function normalizeInitialMemory(memory: Record<number, number>): ByteMemory {
+  const normalized: ByteMemory = {};
   for (const [address, value] of Object.entries(memory)) {
     const byteAddress = Number(address);
     if (Number.isInteger(byteAddress)) {
-      normalized[byteAddress] = value & 0xff;
+      normalized[toByteAddress(byteAddress)] = toByteValue(value);
     }
   }
   return normalized;
 }
 
-function readWord(memory: Record<number, number>, address: number): number {
+function readWord(memory: ByteMemory, address: ByteAddress): Int32 {
   const value =
     ((memory[address] ?? 0) & 0xff) |
     (((memory[address + 1] ?? 0) & 0xff) << 8) |
@@ -412,7 +465,7 @@ function readWord(memory: Record<number, number>, address: number): number {
   return toInt32(value);
 }
 
-function isAlignedWordAddress(address: number): boolean {
+function isAlignedWordAddress(address: ByteAddress): boolean {
   return address % 4 === 0;
 }
 
@@ -426,4 +479,48 @@ function errorEvent(cycle: number, slot: StageSlot, message: string): PipelineEv
     message,
     detail: { pc: slot.pc },
   };
+}
+
+function destinationRegister(instruction: Instruction | undefined): RegisterIndex | null {
+  if (!instruction) return null;
+  switch (instruction.op) {
+    case "add":
+    case "sub":
+    case "and":
+    case "or":
+    case "xor":
+    case "sll":
+    case "srl":
+    case "addi":
+    case "lw":
+    case "jal":
+      return instruction.rd;
+    case "sw":
+    case "beq":
+    case "bne":
+    case "blt":
+      return null;
+  }
+}
+
+function sourceRegisters(instruction: Instruction): RegisterIndex[] {
+  switch (instruction.op) {
+    case "add":
+    case "sub":
+    case "and":
+    case "or":
+    case "xor":
+    case "sll":
+    case "srl":
+    case "sw":
+    case "beq":
+    case "bne":
+    case "blt":
+      return [instruction.rs1, instruction.rs2];
+    case "addi":
+    case "lw":
+      return [instruction.rs1];
+    case "jal":
+      return [];
+  }
 }

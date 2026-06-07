@@ -133,7 +133,7 @@ function InspectorPanel({
 }
 
 function RegistersPanel({ current }: { current: CycleSnapshot }) {
-  const changedRegisters = new Set(current.registerDiffs.map((diff) => diff.register));
+  const changedRegisters = new Set<number>(current.registerDiffs.map((diff) => diff.register));
 
   return (
     <section className="state-panel">

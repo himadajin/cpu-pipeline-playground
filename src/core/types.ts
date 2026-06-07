@@ -1,3 +1,15 @@
+type Brand<T, Name extends string> = T & { readonly __brand: Name };
+
+export type RegisterIndex = Brand<number, "RegisterIndex">;
+export type ByteAddress = Brand<number, "ByteAddress">;
+export type ByteValue = Brand<number, "ByteValue">;
+export type Int32 = Brand<number, "Int32">;
+export type Signed12Immediate = Brand<number, "Signed12Immediate">;
+
+export type LabelTable = Record<string, ByteAddress>;
+export type ByteMemory = Record<number, ByteValue>;
+export type RegisterFile = Int32[];
+
 export type Opcode =
   | "add"
   | "sub"
@@ -22,18 +34,55 @@ export interface SourceLine {
   text: string;
 }
 
-export interface Instruction {
+interface InstructionBase {
   id: number;
-  op: Opcode;
-  rd?: number;
-  rs1?: number;
-  rs2?: number;
-  imm?: number;
-  target?: number;
-  label?: string;
   source: SourceLine;
   text: string;
 }
+
+export type RTypeOpcode = "add" | "sub" | "and" | "or" | "xor" | "sll" | "srl";
+export type ITypeOpcode = "addi" | "lw";
+export type STypeOpcode = "sw";
+export type BTypeOpcode = "beq" | "bne" | "blt";
+export type JTypeOpcode = "jal";
+
+export interface RTypeInstruction extends InstructionBase {
+  op: RTypeOpcode;
+  rd: RegisterIndex;
+  rs1: RegisterIndex;
+  rs2: RegisterIndex;
+}
+
+export interface ITypeInstruction extends InstructionBase {
+  op: ITypeOpcode;
+  rd: RegisterIndex;
+  rs1: RegisterIndex;
+  imm: Signed12Immediate;
+}
+
+export interface STypeInstruction extends InstructionBase {
+  op: STypeOpcode;
+  rs1: RegisterIndex;
+  rs2: RegisterIndex;
+  imm: Signed12Immediate;
+}
+
+export interface BTypeInstruction extends InstructionBase {
+  op: BTypeOpcode;
+  rs1: RegisterIndex;
+  rs2: RegisterIndex;
+  target: ByteAddress;
+  label: string;
+}
+
+export interface JTypeInstruction extends InstructionBase {
+  op: JTypeOpcode;
+  rd: RegisterIndex;
+  target: ByteAddress;
+  label: string;
+}
+
+export type Instruction = RTypeInstruction | ITypeInstruction | STypeInstruction | BTypeInstruction | JTypeInstruction;
 
 export interface AssembleError {
   line: number;
@@ -44,7 +93,7 @@ export interface AssembleError {
 export interface AssembleResult {
   ok: boolean;
   instructions: Instruction[];
-  labels: Record<string, number>;
+  labels: LabelTable;
   errors: AssembleError[];
 }
 
@@ -59,27 +108,27 @@ export interface PipelineEvent {
 }
 
 export interface RegisterDiff {
-  register: number;
-  before: number;
-  after: number;
+  register: RegisterIndex;
+  before: Int32;
+  after: Int32;
 }
 
 export interface MemoryDiff {
-  address: number;
-  before: number;
-  after: number;
+  address: ByteAddress;
+  before: ByteValue;
+  after: ByteValue;
 }
 
 export interface StageSlot {
   instructionId: number;
-  pc: number;
+  pc: ByteAddress;
   instruction: Instruction;
-  result?: number;
-  address?: number;
-  storeValue?: number;
-  loadedValue?: number;
+  result?: Int32;
+  address?: ByteAddress;
+  storeValue?: Int32;
+  loadedValue?: Int32;
   taken?: boolean;
-  nextPc?: number;
+  nextPc?: ByteAddress;
   halted?: boolean;
 }
 
@@ -94,10 +143,10 @@ export interface TimelineCell {
 
 export interface CycleSnapshot {
   cycle: number;
-  pc: number;
+  pc: ByteAddress;
   stages: StageSlots;
-  registers: number[];
-  memory: Record<number, number>;
+  registers: RegisterFile;
+  memory: ByteMemory;
   events: PipelineEvent[];
   registerDiffs: RegisterDiff[];
   memoryDiffs: MemoryDiff[];
