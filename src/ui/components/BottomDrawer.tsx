@@ -95,7 +95,13 @@ export function BottomDrawer({
       </div>
       <div className="drawer-body">
         {activeTab === "assembly" ? (
-          <Suspense fallback={<div className="editor-loading" role="status">Loading editor...</div>}>
+          <Suspense
+            fallback={
+              <div className="editor-loading" role="status">
+                Loading editor...
+              </div>
+            }
+          >
             <AssemblyEditor source={source} onSourceChange={onSourceChange} />
           </Suspense>
         ) : (
