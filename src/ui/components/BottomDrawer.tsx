@@ -1,12 +1,12 @@
-import CodeMirror from "@uiw/react-codemirror";
-import type { Extension } from "@codemirror/state";
 import clsx from "clsx";
 import { X } from "lucide-react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { lazy, Suspense, type PointerEvent as ReactPointerEvent } from "react";
 import type { CycleSnapshot, SelectedCell } from "../../core";
 import type { BottomTab } from "../hooks/useWorkbenchLayout";
 import { EventList } from "./EventList";
 import { TabButton } from "./TabButton";
+
+const AssemblyEditor = lazy(() => import("./AssemblyEditor").then((module) => ({ default: module.AssemblyEditor })));
 
 export function BottomDrawer({
   activeTab,
@@ -19,7 +19,6 @@ export function BottomDrawer({
   invalidated,
   lintCount,
   source,
-  editorExtensions,
   onSourceChange,
 }: {
   activeTab: BottomTab;
@@ -32,7 +31,6 @@ export function BottomDrawer({
   invalidated: boolean;
   lintCount: number;
   source: string;
-  editorExtensions: Extension[];
   onSourceChange: (value: string) => void;
 }) {
   if (!open) {
@@ -97,13 +95,15 @@ export function BottomDrawer({
       </div>
       <div className="drawer-body">
         {activeTab === "assembly" ? (
-          <CodeMirror
-            value={source}
-            height="100%"
-            basicSetup={{ foldGutter: false, highlightActiveLine: true }}
-            extensions={editorExtensions}
-            onChange={onSourceChange}
-          />
+          <Suspense
+            fallback={
+              <div className="editor-loading" role="status">
+                Loading editor...
+              </div>
+            }
+          >
+            <AssemblyEditor source={source} onSourceChange={onSourceChange} />
+          </Suspense>
         ) : (
           <EventList events={snapshot.events} emptyText="No events in this cycle." />
         )}

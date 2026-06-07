@@ -38,7 +38,7 @@ describe("App", () => {
     render(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
     await userEvent.click(screen.getByRole("button", { name: "Step" }));
-    const editor = screen.getByLabelText("Assembly source");
+    const editor = await screen.findByLabelText("Assembly source");
     await userEvent.type(editor, "\naddi x11, x0, 2");
     expect(screen.getByText("simulation invalidated")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Select program: .*modified/ })).toBeInTheDocument();

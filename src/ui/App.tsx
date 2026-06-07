@@ -1,9 +1,6 @@
-import { EditorView } from "@codemirror/view";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import clsx from "clsx";
 import { RotateCcw, StepBack, StepForward } from "lucide-react";
-import { useMemo, useState } from "react";
-import { assemblyExtensions } from "./asmLanguage";
 import { BottomDrawer } from "./components/BottomDrawer";
 import { PipelinePanel } from "./components/PipelinePanel";
 import { ProgramSwitcher } from "./components/ProgramSwitcher";
@@ -22,7 +19,6 @@ export function App() {
   });
   const workbenchLayout = useWorkbenchLayout();
   const { dimensions, layout } = workbenchLayout;
-  const [lintCount, setLintCount] = useState(0);
   const {
     activeEventSnapshot,
     assembled,
@@ -35,11 +31,7 @@ export function App() {
     snapshots,
     timelineCells,
   } = session;
-
-  const editorExtensions = useMemo(
-    () => [...assemblyExtensions(setLintCount), EditorView.contentAttributes.of({ "aria-label": "Assembly source" })],
-    [],
-  );
+  const lintCount = assembled.ok ? 0 : assembled.errors.length;
 
   return (
     <Tooltip.Provider>
@@ -105,7 +97,6 @@ export function App() {
               invalidated={invalidated}
               lintCount={lintCount}
               source={selectedProgram.source}
-              editorExtensions={editorExtensions}
               onSourceChange={(value) => programLibrary.actions.updateSelectedProgram({ source: value })}
             />
           </section>
