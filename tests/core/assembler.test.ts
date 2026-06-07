@@ -25,8 +25,12 @@ slli x10, x9, 1
 srli x10, x9, 1
 srai x10, x9, 1
 sb x10, 1(x1)
+sh x10, 2(x1)
 sw x10, 0(x1)
 lb x11, 1(x1)
+lbu x11, 1(x1)
+lh x11, 2(x1)
+lhu x11, 2(x1)
 lw x12, 0(x1)
 beq x12, x10, done
 bne x12, x0, done
@@ -70,10 +74,10 @@ nop
 
   it("validates signed 12-bit immediates for I-type ALU and memory offsets", () => {
     const result = assemble(
-      "addi x1, x0, 2048\nslti x1, x0, 2048\nsltiu x1, x0, -2049\nandi x1, x0, 2048\nori x1, x0, -2049\nxori x1, x0, 1abc\nlb x2, 2048(x1)\nlw x2, -2049(x1)\nsb x2, -2049(x1)\nsw x2, 2048(x1)\naddi x3, x0, 1abc\n",
+      "addi x1, x0, 2048\nslti x1, x0, 2048\nsltiu x1, x0, -2049\nandi x1, x0, 2048\nori x1, x0, -2049\nxori x1, x0, 1abc\nlb x2, 2048(x1)\nlbu x2, 2048(x1)\nlh x2, 2048(x1)\nlhu x2, -2049(x1)\nlw x2, -2049(x1)\nsb x2, -2049(x1)\nsh x2, 2048(x1)\nsw x2, 2048(x1)\naddi x3, x0, 1abc\n",
     );
     expect(result.ok).toBe(false);
-    expect(result.errors.map((error) => error.line)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(result.errors.map((error) => error.line)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     expect(assemble("addi x1, x0, -0x800\n").errors).toEqual([]);
   });
 
@@ -87,7 +91,7 @@ nop
 
   it("parses compare and byte memory operands", () => {
     const result = assemble(
-      "slt x1, x2, x3\nsltu x4, x5, x6\nslti x7, x8, -1\nsltiu x9, x10, 1\nandi x11, x12, 0xff\nori x13, x14, -1\nxori x15, x16, 1\nlb x17, -1(x18)\nsb x19, 7(x20)\n",
+      "slt x1, x2, x3\nsltu x4, x5, x6\nslti x7, x8, -1\nsltiu x9, x10, 1\nandi x11, x12, 0xff\nori x13, x14, -1\nxori x15, x16, 1\nlb x17, -1(x18)\nlbu x19, 2(x20)\nlh x21, 4(x22)\nlhu x23, 6(x24)\nsb x25, 7(x26)\nsh x27, 8(x28)\n",
     );
     expect(result.errors).toEqual([]);
     expect(result.instructions[0]).toMatchObject({ op: "slt", rd: 1, rs1: 2, rs2: 3 });
@@ -98,7 +102,11 @@ nop
     expect(result.instructions[5]).toMatchObject({ op: "ori", rd: 13, rs1: 14, imm: -1 });
     expect(result.instructions[6]).toMatchObject({ op: "xori", rd: 15, rs1: 16, imm: 1 });
     expect(result.instructions[7]).toMatchObject({ op: "lb", rd: 17, rs1: 18, imm: -1 });
-    expect(result.instructions[8]).toMatchObject({ op: "sb", rs1: 20, rs2: 19, imm: 7 });
+    expect(result.instructions[8]).toMatchObject({ op: "lbu", rd: 19, rs1: 20, imm: 2 });
+    expect(result.instructions[9]).toMatchObject({ op: "lh", rd: 21, rs1: 22, imm: 4 });
+    expect(result.instructions[10]).toMatchObject({ op: "lhu", rd: 23, rs1: 24, imm: 6 });
+    expect(result.instructions[11]).toMatchObject({ op: "sb", rs1: 26, rs2: 25, imm: 7 });
+    expect(result.instructions[12]).toMatchObject({ op: "sh", rs1: 28, rs2: 27, imm: 8 });
   });
 
   it("parses register and immediate shift operands", () => {

@@ -353,6 +353,19 @@ srai x6, x1, 1
     expect(simulation.current.registers[3]).toBe(127);
   });
 
+  it("loads zero-extended bytes and signed or zero-extended halfwords", () => {
+    const simulation = runSimulation(
+      createSimulation(assembled("lbu x2, 1(x1)\nlh x3, 2(x1)\nlhu x4, 2(x1)\nlh x5, 4(x1)\n"), {
+        registers: { 1: 16 },
+        memory: { 17: 0xff, 18: 0x80, 19: 0xff, 20: 0x34, 21: 0x12 },
+      }),
+    );
+    expect(simulation.current.registers[2]).toBe(255);
+    expect(simulation.current.registers[3]).toBe(-128);
+    expect(simulation.current.registers[4]).toBe(0xff80);
+    expect(simulation.current.registers[5]).toBe(0x1234);
+  });
+
   it("stores one byte at unaligned byte addresses and records one byte diff", () => {
     const simulation = runSimulation(
       createSimulation(assembled("sb x2, 1(x1)\n"), {
@@ -371,6 +384,22 @@ srai x6, x1, 1
     );
   });
 
+  it("stores little-endian halfwords and records two byte diffs", () => {
+    const simulation = runSimulation(
+      createSimulation(assembled("sh x2, 2(x1)\n"), {
+        registers: { 1: 16, 2: 0x12345678 },
+        memory: { 18: 0xaa, 19: 0xbb, 20: 0xcc },
+      }),
+    );
+    expect(simulation.current.memory[18]).toBe(0x78);
+    expect(simulation.current.memory[19]).toBe(0x56);
+    expect(simulation.current.memory[20]).toBe(0xcc);
+    expect(simulation.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([
+      { address: 18, before: 0xaa, after: 0x78 },
+      { address: 19, before: 0xbb, after: 0x56 },
+    ]);
+  });
+
   it("stalls when an instruction depends on a loaded byte", () => {
     const program = assembled(`
 lb x2, 1(x1)
@@ -386,6 +415,23 @@ addi x3, x2, 1
       true,
     );
     expect(simulation.current.registers[3]).toBe(128);
+  });
+
+  it("stalls when an instruction depends on a loaded halfword", () => {
+    const program = assembled(`
+lh x2, 0(x1)
+addi x3, x2, 1
+`);
+    const simulation = runSimulation(
+      createSimulation(program, {
+        registers: { 1: 16 },
+        memory: { 16: 0xff, 17: 0x7f },
+      }),
+    );
+    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
+      true,
+    );
+    expect(simulation.current.registers[3]).toBe(0x8000);
   });
 
   it("loads little-endian words from byte memory", () => {
@@ -420,6 +466,16 @@ addi x3, x2, 1
     expect(load.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
 
     const store = runSimulation(createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 18, 2: 1 } }));
+    expect(store.current.halted).toBe(true);
+    expect(store.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
+  });
+
+  it("halts with an error event on unaligned halfword memory access", () => {
+    const load = runSimulation(createSimulation(assembled("lh x2, 0(x1)\n"), { registers: { 1: 17 } }));
+    expect(load.current.halted).toBe(true);
+    expect(load.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
+
+    const store = runSimulation(createSimulation(assembled("sh x2, 0(x1)\n"), { registers: { 1: 17, 2: 1 } }));
     expect(store.current.halted).toBe(true);
     expect(store.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
   });

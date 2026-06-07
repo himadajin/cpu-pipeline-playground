@@ -191,7 +191,7 @@ function parseInstruction(
     return { ...base, op, rd, rs1, imm: toShiftAmountImmediate(imm) };
   }
 
-  if (op === "lb" || op === "lw") {
+  if (op === "lb" || op === "lbu" || op === "lh" || op === "lhu" || op === "lw") {
     if (args.length !== 2) return fail(`${op} expects rd, offset(rs1).`);
     const rd = parseRegister(args[0]);
     const memory = parseMemoryOperand(args[1]);
@@ -209,7 +209,7 @@ function parseInstruction(
     return { ...base, op, rd, rs1: memory.base, imm: toSigned12Immediate(memory.offset) };
   }
 
-  if (op === "sb" || op === "sw") {
+  if (op === "sb" || op === "sh" || op === "sw") {
     if (args.length !== 2) return fail(`${op} expects rs2, offset(rs1).`);
     const rs2 = parseRegister(args[0]);
     const memory = parseMemoryOperand(args[1]);

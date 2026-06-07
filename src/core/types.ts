@@ -24,8 +24,12 @@ export type Opcode =
   | "ori"
   | "xori"
   | "lb"
+  | "lbu"
+  | "lh"
+  | "lhu"
   | "lw"
   | "sb"
+  | "sh"
   | "sw"
   | "beq"
   | "bne"
@@ -62,9 +66,21 @@ interface InstructionBase {
 }
 
 export type RTypeOpcode = "add" | "sub" | "slt" | "sltu" | "and" | "or" | "xor" | "sll" | "srl" | "sra";
-export type ITypeOpcode = "addi" | "slti" | "sltiu" | "andi" | "ori" | "xori" | "lb" | "lw" | "jalr";
+export type ITypeOpcode =
+  | "addi"
+  | "slti"
+  | "sltiu"
+  | "andi"
+  | "ori"
+  | "xori"
+  | "lb"
+  | "lbu"
+  | "lh"
+  | "lhu"
+  | "lw"
+  | "jalr";
 export type ShiftImmediateOpcode = "slli" | "srli" | "srai";
-export type STypeOpcode = "sb" | "sw";
+export type STypeOpcode = "sb" | "sh" | "sw";
 export type BTypeOpcode = "beq" | "bne" | "blt" | "bge" | "bltu" | "bgeu";
 export type JTypeOpcode = "jal";
 export type UTypeOpcode = "lui" | "auipc";

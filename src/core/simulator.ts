@@ -220,16 +220,38 @@ function runMemory(
   events: PipelineEvent[],
 ): Partial<StageSlot> | null {
   if (!slot) return null;
-  if (slot.instruction.op === "lb") {
+  if (slot.instruction.op === "lb" || slot.instruction.op === "lbu") {
     const address = slot.address ?? toByteAddress(0);
-    const loadedValue = readSignedByte(memory, address);
+    const loadedValue =
+      slot.instruction.op === "lb" ? readSignedByte(memory, address) : readUnsignedByte(memory, address);
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "load",
-      message: `${slot.instruction.text} reads signed byte at byte address ${address} = ${loadedValue}.`,
+      message: `${slot.instruction.text} reads byte at byte address ${address} = ${loadedValue}.`,
+      detail: { address, value: loadedValue },
+    });
+    return { loadedValue };
+  }
+  if (slot.instruction.op === "lh" || slot.instruction.op === "lhu") {
+    const address = slot.address ?? toByteAddress(0);
+    if (!isAlignedHalfwordAddress(address)) {
+      events.push(
+        errorEvent(cycle, slot, `${slot.instruction.text} cannot load misaligned halfword address ${address}.`),
+      );
+      return { halted: true };
+    }
+    const loadedValue =
+      slot.instruction.op === "lh" ? readSignedHalfword(memory, address) : readUnsignedHalfword(memory, address);
+    events.push({
+      id: eventId(cycle, "memory", slot.instructionId),
+      cycle,
+      instructionId: slot.instructionId,
+      kind: "memory",
+      label: "load",
+      message: `${slot.instruction.text} reads halfword at byte address ${address} = ${loadedValue}.`,
       detail: { address, value: loadedValue },
     });
     return { loadedValue };
@@ -266,6 +288,32 @@ function runMemory(
       label: "store",
       message: `${slot.instruction.text} writes byte at byte address ${address}.`,
       detail: { address, value: after },
+    });
+  }
+  if (slot.instruction.op === "sh") {
+    const address = slot.address ?? toByteAddress(0);
+    if (!isAlignedHalfwordAddress(address)) {
+      events.push(
+        errorEvent(cycle, slot, `${slot.instruction.text} cannot store misaligned halfword address ${address}.`),
+      );
+      return { halted: true };
+    }
+    const value = toUint32(slot.storeValue ?? 0);
+    const bytes = [toByteValue(value), toByteValue(value >>> 8)];
+    bytes.forEach((after, offset) => {
+      const byteAddress = toByteAddress(address + offset);
+      const before = memory[byteAddress] ?? toByteValue(0);
+      memory[byteAddress] = after;
+      diffs.push({ address: byteAddress, before, after });
+    });
+    events.push({
+      id: eventId(cycle, "memory", slot.instructionId),
+      cycle,
+      instructionId: slot.instructionId,
+      kind: "memory",
+      label: "store",
+      message: `${slot.instruction.text} writes halfword at byte address ${address}.`,
+      detail: { address, value: value & 0xffff },
     });
   }
   if (slot.instruction.op === "sw") {
@@ -394,11 +442,15 @@ function runExecute(
       return { result: toInt32(a >> slot.instruction.imm) };
     }
     case "lb":
+    case "lbu":
+    case "lh":
+    case "lhu":
     case "lw": {
       const a = read(slot.instruction.rs1);
       return { address: toByteAddress(toInt32(a + slot.instruction.imm)) };
     }
     case "sb":
+    case "sh":
     case "sw": {
       const a = read(slot.instruction.rs1);
       const b = read(slot.instruction.rs2);
@@ -505,17 +557,28 @@ function consumerStagePeer(_consumer: StageSlot, stage: StageName): StageSlot | 
 }
 
 function shouldStallForLoadUse(id: StageSlot | null, ex: StageSlot | null): boolean {
-  if (!id || !ex || (ex.instruction.op !== "lb" && ex.instruction.op !== "lw")) return false;
-  return sourceRegisters(id.instruction).includes(ex.instruction.rd);
+  if (!id || !ex || !isLoadInstruction(ex.instruction)) return false;
+  const rd = destinationRegister(ex.instruction);
+  return rd != null && sourceRegisters(id.instruction).includes(rd);
 }
 
 function writebackValue(slot: StageSlot | null): Int32 | null {
   if (!slot) return null;
-  if (slot.instruction.op === "lb" || slot.instruction.op === "lw") return slot.loadedValue ?? null;
+  if (isLoadInstruction(slot.instruction)) return slot.loadedValue ?? null;
   if (slot.instruction.op === "jal" || slot.instruction.op === "jalr") {
     return slot.result ?? toInt32(slot.pc + INSTRUCTION_SIZE_BYTES);
   }
   return slot.result ?? null;
+}
+
+function isLoadInstruction(instruction: Instruction): boolean {
+  return (
+    instruction.op === "lb" ||
+    instruction.op === "lbu" ||
+    instruction.op === "lh" ||
+    instruction.op === "lhu" ||
+    instruction.op === "lw"
+  );
 }
 
 function buildTimeline(cycle: number, stages: StageSlots, events: PipelineEvent[]): TimelineCell[] {
@@ -586,8 +649,26 @@ function readSignedByte(memory: ByteMemory, address: ByteAddress): Int32 {
   return toInt32((value << 24) >> 24);
 }
 
+function readUnsignedByte(memory: ByteMemory, address: ByteAddress): Int32 {
+  return toInt32((memory[address] ?? 0) & 0xff);
+}
+
+function readSignedHalfword(memory: ByteMemory, address: ByteAddress): Int32 {
+  const value = ((memory[address] ?? 0) & 0xff) | (((memory[address + 1] ?? 0) & 0xff) << 8);
+  return toInt32((value << 16) >> 16);
+}
+
+function readUnsignedHalfword(memory: ByteMemory, address: ByteAddress): Int32 {
+  const value = ((memory[address] ?? 0) & 0xff) | (((memory[address + 1] ?? 0) & 0xff) << 8);
+  return toInt32(value);
+}
+
 function isAlignedWordAddress(address: ByteAddress): boolean {
   return address % 4 === 0;
+}
+
+function isAlignedHalfwordAddress(address: ByteAddress): boolean {
+  return address % 2 === 0;
 }
 
 function isAlignedInstructionAddress(address: ByteAddress): boolean {

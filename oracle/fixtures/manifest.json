@@ -95,6 +95,12 @@
       "file": "shift-family.asm",
       "kind": "alu",
       "description": "Covers register and immediate logical and arithmetic shifts."
+    },
+    {
+      "id": "load-store-widths",
+      "file": "load-store-widths.asm",
+      "kind": "memory",
+      "description": "Covers byte, halfword, and word load/store widths."
     }
   ]
 }
