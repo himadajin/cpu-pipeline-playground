@@ -10,6 +10,8 @@ Oracle fixtures are executable semantic examples. A fixture should make the arch
 
 Keep test intent in `oracle/fixtures/*.asm`. Keep execution mechanics outside fixtures: QEMU-only directives, startup code, shutdown behavior, signature output, and normalization belong in the harness and producers. This keeps fixture code close to the assembly users can reason about in the app.
 
+Fixtures should not depend on TypeScript internal types or simulator pipeline data structures. They compare architectural runtime semantics only.
+
 When test coverage changes, prefer fixtures that explain the behavior they protect over broad instruction catalogs. Redundant fixtures should be removed when they no longer protect distinct architectural behavior.
 
 ## Fixtures And Signatures

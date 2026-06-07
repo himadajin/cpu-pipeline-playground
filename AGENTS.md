@@ -12,7 +12,7 @@ The product direction is documented in `docs/design.md`. Treat that file as the 
   - `assembler.ts`: parses the RISC-V-like assembly subset.
   - `simulator.ts`: models IF / ID / EX / MEM / WB, hazards, stalls, forwarding, branch flushes, commits, register diffs, and memory diffs.
   - `samples.ts`: seed programs for the Program Library. Samples are normal programs, not a special feature path.
-  - `types.ts`: shared data contracts used by core, CLI, tests, and UI.
+  - `types.ts`: shared data contracts and RV32I semantic value types used by core, CLI, tests, and UI.
 - `src/cli.ts` uses the same core assembler/simulator as the UI.
 - `src/ui/` contains the React workbench:
   - `App.tsx`: Program Library, toolbar, stage board, timeline, event strip, inspector.
@@ -58,6 +58,7 @@ Run the narrowest useful check while iterating, then run the full set before han
 - Follow `docs/rv32i-roadmap.md` when changing instruction semantics or adding opcodes. Do not add instructions opportunistically outside the agreed phase.
 - Treat RV32I semantic alignment as the direction for implemented base integer instructions. Old behavior that conflicts with RV32I should be treated as a bug unless the roadmap explicitly says otherwise.
 - Keep `nop` and future pseudo instructions in the assembler layer. The simulator should execute expanded real instructions, with source mapping preserved for UI explanation.
+- Keep the assembler as the validation boundary for typed instructions. The simulator should consume validated real-instruction variants rather than optional operands with fallback defaults.
 - Do not add out-of-order execution, register renaming, ROB, caches, exceptions, interrupts, OS behavior, ABI compatibility, privileged behavior, `ecall`, `ebreak`, or `fence` without an explicit scope change.
 - Do not overbuild future trap/system/ordering support, but avoid type designs that make those instruction classes impossible to add later.
 - When changing pipeline behavior, update or add Vitest cases for representative commit, memory, forwarding, stall, and flush scenarios.
