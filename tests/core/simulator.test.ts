@@ -256,6 +256,38 @@ addi x4, x0, 1
     expect(simulation.current.registers[4]).toBe(1);
   });
 
+  it("executes signed and unsigned branch comparisons", () => {
+    const program = assembled(`
+bge x1, x2, bge_false
+addi x3, x0, 1
+bge_false:
+bge x2, x1, bge_true
+addi x4, x0, 1
+bge_true:
+bltu x1, x2, bltu_false
+addi x5, x0, 1
+bltu_false:
+bltu x2, x1, bltu_true
+addi x6, x0, 1
+bltu_true:
+bgeu x2, x1, bgeu_false
+addi x7, x0, 1
+bgeu_false:
+bgeu x1, x2, bgeu_true
+addi x8, x0, 1
+bgeu_true:
+addi x9, x0, 1
+`);
+    const simulation = runSimulation(createSimulation(program, { registers: { 1: -1, 2: 1 } }));
+    expect(simulation.current.registers[3]).toBe(1);
+    expect(simulation.current.registers[4]).toBe(0);
+    expect(simulation.current.registers[5]).toBe(1);
+    expect(simulation.current.registers[6]).toBe(0);
+    expect(simulation.current.registers[7]).toBe(1);
+    expect(simulation.current.registers[8]).toBe(0);
+    expect(simulation.current.registers[9]).toBe(1);
+  });
+
   it("uses unsigned uint32 comparison for sltu", () => {
     const program = assembled(`
 sltu x3, x1, x2

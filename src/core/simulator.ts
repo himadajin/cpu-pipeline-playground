@@ -399,6 +399,30 @@ function runExecute(
         nextPc: toInt32(a) < toInt32(b) ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
       };
     }
+    case "bge": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
+      return {
+        taken: toInt32(a) >= toInt32(b),
+        nextPc: toInt32(a) >= toInt32(b) ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
+      };
+    }
+    case "bltu": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
+      return {
+        taken: toUint32(a) < toUint32(b),
+        nextPc: toUint32(a) < toUint32(b) ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
+      };
+    }
+    case "bgeu": {
+      const a = read(slot.instruction.rs1);
+      const b = read(slot.instruction.rs2);
+      return {
+        taken: toUint32(a) >= toUint32(b),
+        nextPc: toUint32(a) >= toUint32(b) ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
+      };
+    }
     case "jal":
       return { result: toInt32(slot.pc + INSTRUCTION_SIZE_BYTES), taken: true, nextPc: slot.instruction.target };
     case "jalr": {

@@ -24,6 +24,9 @@ lw x12, 0(x1)
 beq x12, x10, done
 bne x12, x0, done
 blt x0, x12, done
+bge x12, x0, done
+bltu x0, x12, done
+bgeu x12, x0, done
 jal x0, done
 jalr x13, 0(x1)
 lui x14, 0x12345

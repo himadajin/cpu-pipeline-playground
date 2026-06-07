@@ -26,6 +26,9 @@ export type Opcode =
   | "beq"
   | "bne"
   | "blt"
+  | "bge"
+  | "bltu"
+  | "bgeu"
   | "jal"
   | "jalr"
   | "lui"
@@ -53,7 +56,7 @@ interface InstructionBase {
 export type RTypeOpcode = "add" | "sub" | "slt" | "sltu" | "and" | "or" | "xor" | "sll" | "srl";
 export type ITypeOpcode = "addi" | "slti" | "sltiu" | "lb" | "lw" | "jalr";
 export type STypeOpcode = "sb" | "sw";
-export type BTypeOpcode = "beq" | "bne" | "blt";
+export type BTypeOpcode = "beq" | "bne" | "blt" | "bge" | "bltu" | "bgeu";
 export type JTypeOpcode = "jal";
 export type UTypeOpcode = "lui" | "auipc";
 
