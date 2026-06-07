@@ -16,6 +16,7 @@ import type {
   TimelineCell,
   SimulationInitialState,
 } from "./types";
+import { destinationRegister, sourceRegisters } from "./instructionMetadata";
 import { toByteAddress, toByteValue, toInt32, toRegisterIndex, toSigned12Immediate, toUint32 } from "./numbers";
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
@@ -473,48 +474,4 @@ function errorEvent(cycle: number, slot: StageSlot, message: string): PipelineEv
     message,
     detail: { pc: slot.pc },
   };
-}
-
-function destinationRegister(instruction: Instruction | undefined): RegisterIndex | null {
-  if (!instruction) return null;
-  switch (instruction.op) {
-    case "add":
-    case "sub":
-    case "and":
-    case "or":
-    case "xor":
-    case "sll":
-    case "srl":
-    case "addi":
-    case "lw":
-    case "jal":
-      return instruction.rd;
-    case "sw":
-    case "beq":
-    case "bne":
-    case "blt":
-      return null;
-  }
-}
-
-function sourceRegisters(instruction: Instruction): RegisterIndex[] {
-  switch (instruction.op) {
-    case "add":
-    case "sub":
-    case "and":
-    case "or":
-    case "xor":
-    case "sll":
-    case "srl":
-    case "sw":
-    case "beq":
-    case "bne":
-    case "blt":
-      return [instruction.rs1, instruction.rs2];
-    case "addi":
-    case "lw":
-      return [instruction.rs1];
-    case "jal":
-      return [];
-  }
 }
