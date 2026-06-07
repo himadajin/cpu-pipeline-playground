@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { X } from "lucide-react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { toHex32, toInt32 } from "../../core";
 import type { CycleSnapshot, Instruction, PipelineEvent } from "../../core";
 import type { RightTab } from "../hooks/useWorkbenchLayout";
 import { EventList } from "./EventList";
@@ -141,7 +142,7 @@ function RegistersPanel({ current }: { current: CycleSnapshot }) {
           <h2>Register Diffs</h2>
           {current.registerDiffs.map((diff) => (
             <div className="diff-row" key={diff.register}>
-              x{diff.register}: {diff.before} {"->"} {diff.after}
+              x{diff.register}: {formatValue(diff.before)} {"->"} {formatValue(diff.after)}
             </div>
           ))}
         </div>
@@ -150,7 +151,10 @@ function RegistersPanel({ current }: { current: CycleSnapshot }) {
         {current.registers.map((value, index) => (
           <div className={clsx("register-cell", changedRegisters.has(index) && "changed")} key={index}>
             <span className="register-name">x{index}</span>
-            <strong className="register-value">{value}</strong>
+            <span className="register-value-stack">
+              <strong className="register-value">{toHex32(value)}</strong>
+              <span className="register-secondary">{toInt32(value)}</span>
+            </span>
           </div>
         ))}
       </div>
@@ -159,7 +163,7 @@ function RegistersPanel({ current }: { current: CycleSnapshot }) {
 }
 
 function MemoryPanel({ current }: { current: CycleSnapshot }) {
-  const entries = Object.entries(current.memory);
+  const entries = groupMemoryWords(current.memory);
 
   return (
     <section className="state-panel">
@@ -168,7 +172,7 @@ function MemoryPanel({ current }: { current: CycleSnapshot }) {
           <h2>Memory Diffs</h2>
           {current.memoryDiffs.map((diff) => (
             <div className="diff-row" key={diff.address}>
-              [{diff.address}]: {diff.before} {"->"} {diff.after}
+              [{diff.address}]: {formatByte(diff.before)} {"->"} {formatByte(diff.after)}
             </div>
           ))}
         </div>
@@ -178,13 +182,37 @@ function MemoryPanel({ current }: { current: CycleSnapshot }) {
         {entries.length === 0 ? (
           <p className="muted">No memory writes yet.</p>
         ) : (
-          entries.map(([address, value]) => (
+          entries.map(({ address, bytes, value }) => (
             <div className="diff-row" key={address}>
-              [{address}] = {value}
+              [{address}] {toHex32(value)} <span className="muted">bytes {bytes.map(formatByte).join(" ")}</span>
             </div>
           ))
         )}
       </div>
     </section>
   );
+}
+
+function formatValue(value: number): string {
+  return `${toHex32(value)} (${toInt32(value)})`;
+}
+
+function formatByte(value: number): string {
+  return `0x${(value & 0xff).toString(16).padStart(2, "0")}`;
+}
+
+function groupMemoryWords(memory: Record<number, number>): Array<{ address: number; bytes: number[]; value: number }> {
+  const wordAddresses = new Set<number>();
+  for (const address of Object.keys(memory).map(Number)) {
+    if (Number.isInteger(address)) {
+      wordAddresses.add(address - (address % 4));
+    }
+  }
+  return Array.from(wordAddresses)
+    .sort((a, b) => a - b)
+    .map((address) => {
+      const bytes = [0, 1, 2, 3].map((offset) => memory[address + offset] ?? 0);
+      const value = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
+      return { address, bytes, value };
+    });
 }

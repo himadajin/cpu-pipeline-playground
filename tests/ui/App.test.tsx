@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { App } from "../../src/ui/App";
 
 const LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v1";
+const PROGRAM_STORAGE_KEY = "cpu-pipeline-playground.programs.v1";
 
 function pointerEvent(type: string, coords: { clientX?: number; clientY?: number }) {
   const event = new Event(type, { bubbles: true, cancelable: true });
@@ -73,6 +74,32 @@ describe("App", () => {
     );
     expect(registerNames).toEqual(Array.from({ length: 32 }, (_, index) => `x${index}`));
     expect(registerGrid.querySelector(".register-cell.changed .register-name")?.textContent).toBe("x1");
+    expect(registerGrid).toHaveTextContent("0x00000004");
+    expect(registerGrid).toHaveTextContent("4");
+  });
+
+  it("shows byte-addressed memory grouped as little-endian words", async () => {
+    window.localStorage.setItem(
+      PROGRAM_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "memory",
+          name: "Memory",
+          source: "addi x1, x0, 16\naddi x2, x0, 255\nsw x2, 0(x1)\n",
+          updatedAt: 0,
+        },
+      ]),
+    );
+    const { container } = render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    for (let index = 0; index < 7; index += 1) {
+      await userEvent.click(screen.getByRole("button", { name: "Step" }));
+    }
+    await userEvent.click(screen.getByRole("button", { name: "Memory" }));
+
+    expect(container).toHaveTextContent("[16] 0x000000ff");
+    expect(container).toHaveTextContent("bytes 0xff 0x00 0x00 0x00");
+    expect(container).toHaveTextContent("[16]: 0x00 -> 0xff");
   });
 
   it("collapses dock areas and reopens them from rails", async () => {

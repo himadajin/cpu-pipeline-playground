@@ -8,7 +8,6 @@ export type Opcode =
   | "bne"
   | "blt"
   | "jal"
-  | "nop"
   | "and"
   | "or"
   | "xor"
@@ -81,6 +80,7 @@ export interface StageSlot {
   loadedValue?: number;
   taken?: boolean;
   nextPc?: number;
+  halted?: boolean;
 }
 
 export type StageSlots = Record<StageName, StageSlot | null>;

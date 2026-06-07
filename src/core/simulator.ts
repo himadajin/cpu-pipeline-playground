@@ -11,15 +11,17 @@ import type {
   TimelineCell,
   SimulationInitialState,
 } from "./types";
+import { toInt32, toUint32 } from "./numbers";
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
+const INSTRUCTION_SIZE_BYTES = 4;
 
 export function createSimulation(program: Instruction[], initialState: SimulationInitialState = {}): SimulationState {
   const registers = Array.from({ length: 32 }, () => 0);
   for (const [register, value] of Object.entries(initialState.registers ?? {})) {
     const index = Number(register);
     if (Number.isInteger(index) && index > 0 && index < 32) {
-      registers[index] = value | 0;
+      registers[index] = toInt32(value);
     }
   }
   registers[0] = 0;
@@ -29,7 +31,7 @@ export function createSimulation(program: Instruction[], initialState: Simulatio
     pc: 0,
     stages: emptyStages(),
     registers,
-    memory: { ...(initialState.memory ?? {}) },
+    memory: normalizeInitialMemory(initialState.memory ?? {}),
     events: [],
     registerDiffs: [],
     memoryDiffs: [],
@@ -91,7 +93,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
       instructionId: slots.EX.instructionId,
       kind: "branch",
       label: "branch",
-      message: `${slots.EX.instruction.text} redirects fetch to instruction ${exOutput?.nextPc ?? 0}.`,
+      message: `${slots.EX.instruction.text} redirects fetch to byte address ${exOutput?.nextPc ?? 0}.`,
       detail: { target: exOutput?.nextPc ?? 0 },
     });
     for (const flushed of [slots.IF, slots.ID]) {
@@ -119,15 +121,17 @@ export function stepSimulation(state: SimulationState): SimulationState {
   let pc = previous.pc;
   if (flush) {
     pc = exOutput?.nextPc ?? previous.pc;
-  } else if (!stall) {
+  } else if (!stall && !memOutput?.halted) {
     const fetched = fetchInstruction(state.program, previous.pc);
     nextStages.IF = fetched;
-    pc = fetched ? previous.pc + 1 : previous.pc;
+    pc = fetched && !fetched.halted ? previous.pc + INSTRUCTION_SIZE_BYTES : previous.pc;
   }
 
   if (registers[0] !== 0) registers[0] = 0;
   const timeline = buildTimeline(cycle, nextStages, events);
-  const halted = pc >= state.program.length && STAGES.every((stage) => nextStages[stage] === null);
+  const halted =
+    Boolean(memOutput?.halted || nextStages.IF?.halted) ||
+    (pc >= state.program.length * INSTRUCTION_SIZE_BYTES && STAGES.every((stage) => nextStages[stage] === null));
   const current: CycleSnapshot = {
     cycle,
     pc,
@@ -153,7 +157,23 @@ function cloneStages(stages: StageSlots): StageSlots {
 }
 
 function fetchInstruction(program: Instruction[], pc: number): StageSlot | null {
-  const instruction = program[pc];
+  if (pc % INSTRUCTION_SIZE_BYTES !== 0) {
+    return {
+      instructionId: -1,
+      pc,
+      instruction: {
+        id: -1,
+        op: "addi",
+        rd: 0,
+        rs1: 0,
+        imm: 0,
+        source: { line: 0, text: "" },
+        text: `misaligned fetch at ${pc}`,
+      },
+      halted: true,
+    };
+  }
+  const instruction = program[pc / INSTRUCTION_SIZE_BYTES];
   if (!instruction) return null;
   return { instructionId: instruction.id, pc, instruction };
 }
@@ -169,16 +189,17 @@ function commitWriteback(
   const value = writebackValue(slot);
   if (value == null) return;
   const before = registers[slot.instruction.rd] ?? 0;
-  registers[slot.instruction.rd] = value;
-  diffs.push({ register: slot.instruction.rd, before, after: value });
+  const after = toInt32(value);
+  registers[slot.instruction.rd] = after;
+  diffs.push({ register: slot.instruction.rd, before, after });
   events.push({
     id: eventId(cycle, "commit", slot.instructionId),
     cycle,
     instructionId: slot.instructionId,
     kind: "commit",
     label: "commit",
-    message: `${slot.instruction.text} writes x${slot.instruction.rd}: ${before} -> ${value}.`,
-    detail: { register: `x${slot.instruction.rd}`, before, after: value },
+    message: `${slot.instruction.text} writes x${slot.instruction.rd}: ${before} -> ${after}.`,
+    detail: { register: `x${slot.instruction.rd}`, before, after },
   });
 }
 
@@ -192,32 +213,44 @@ function runMemory(
   if (!slot) return null;
   if (slot.instruction.op === "lw") {
     const address = slot.address ?? 0;
-    const loadedValue = memory[address] ?? 0;
+    if (!isAlignedWordAddress(address)) {
+      events.push(errorEvent(cycle, slot, `${slot.instruction.text} cannot load misaligned word address ${address}.`));
+      return { halted: true };
+    }
+    const loadedValue = readWord(memory, address);
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "load",
-      message: `${slot.instruction.text} reads memory[${address}] = ${loadedValue}.`,
+      message: `${slot.instruction.text} reads word at byte address ${address} = ${loadedValue}.`,
       detail: { address, value: loadedValue },
     });
     return { loadedValue };
   }
   if (slot.instruction.op === "sw") {
     const address = slot.address ?? 0;
-    const before = memory[address] ?? 0;
-    const after = slot.storeValue ?? 0;
-    memory[address] = after;
-    diffs.push({ address, before, after });
+    if (!isAlignedWordAddress(address)) {
+      events.push(errorEvent(cycle, slot, `${slot.instruction.text} cannot store misaligned word address ${address}.`));
+      return { halted: true };
+    }
+    const value = toUint32(slot.storeValue ?? 0);
+    const bytes = [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
+    bytes.forEach((after, offset) => {
+      const byteAddress = address + offset;
+      const before = memory[byteAddress] ?? 0;
+      memory[byteAddress] = after;
+      diffs.push({ address: byteAddress, before, after });
+    });
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "store",
-      message: `${slot.instruction.text} writes memory[${address}]: ${before} -> ${after}.`,
-      detail: { address, before, after },
+      message: `${slot.instruction.text} writes word at byte address ${address}.`,
+      detail: { address, value },
     });
   }
   return {};
@@ -239,35 +272,36 @@ function runExecute(
 
   switch (slot.instruction.op) {
     case "add":
-      return { result: a + b };
+      return { result: toInt32(a + b) };
     case "sub":
-      return { result: a - b };
+      return { result: toInt32(a - b) };
     case "and":
-      return { result: a & b };
+      return { result: toInt32(a & b) };
     case "or":
-      return { result: a | b };
+      return { result: toInt32(a | b) };
     case "xor":
-      return { result: a ^ b };
+      return { result: toInt32(a ^ b) };
     case "sll":
-      return { result: a << (b & 31) };
+      return { result: toInt32(a << (b & 31)) };
     case "srl":
-      return { result: a >>> (b & 31) };
+      return { result: toInt32(a >>> (b & 31)) };
     case "addi":
-      return { result: a + imm };
+      return { result: toInt32(a + imm) };
     case "lw":
-      return { address: a + imm };
+      return { address: toInt32(a + imm) };
     case "sw":
-      return { address: a + imm, storeValue: b };
+      return { address: toInt32(a + imm), storeValue: b };
     case "beq":
-      return { taken: a === b, nextPc: a === b ? slot.instruction.target : slot.pc + 1 };
+      return { taken: a === b, nextPc: a === b ? slot.instruction.target : slot.pc + INSTRUCTION_SIZE_BYTES };
     case "bne":
-      return { taken: a !== b, nextPc: a !== b ? slot.instruction.target : slot.pc + 1 };
+      return { taken: a !== b, nextPc: a !== b ? slot.instruction.target : slot.pc + INSTRUCTION_SIZE_BYTES };
     case "blt":
-      return { taken: a < b, nextPc: a < b ? slot.instruction.target : slot.pc + 1 };
+      return {
+        taken: toInt32(a) < toInt32(b),
+        nextPc: toInt32(a) < toInt32(b) ? slot.instruction.target : slot.pc + INSTRUCTION_SIZE_BYTES,
+      };
     case "jal":
-      return { result: slot.pc + 1, taken: true, nextPc: slot.instruction.target };
-    case "nop":
-      return {};
+      return { result: slot.pc + INSTRUCTION_SIZE_BYTES, taken: true, nextPc: slot.instruction.target };
   }
 }
 
@@ -311,7 +345,7 @@ function shouldStallForLoadUse(id: StageSlot | null, ex: StageSlot | null): bool
 function writebackValue(slot: StageSlot | null): number | null {
   if (!slot) return null;
   if (slot.instruction.op === "lw") return slot.loadedValue ?? null;
-  if (slot.instruction.op === "jal") return slot.result ?? slot.pc + 1;
+  if (slot.instruction.op === "jal") return slot.result ?? slot.pc + INSTRUCTION_SIZE_BYTES;
   return slot.result ?? null;
 }
 
@@ -356,4 +390,40 @@ function forwardEvent(
 
 function eventId(cycle: number, label: string, instructionId?: number): string {
   return `${cycle}:${instructionId ?? "global"}:${label}`;
+}
+
+function normalizeInitialMemory(memory: Record<number, number>): Record<number, number> {
+  const normalized: Record<number, number> = {};
+  for (const [address, value] of Object.entries(memory)) {
+    const byteAddress = Number(address);
+    if (Number.isInteger(byteAddress)) {
+      normalized[byteAddress] = value & 0xff;
+    }
+  }
+  return normalized;
+}
+
+function readWord(memory: Record<number, number>, address: number): number {
+  const value =
+    ((memory[address] ?? 0) & 0xff) |
+    (((memory[address + 1] ?? 0) & 0xff) << 8) |
+    (((memory[address + 2] ?? 0) & 0xff) << 16) |
+    (((memory[address + 3] ?? 0) & 0xff) << 24);
+  return toInt32(value);
+}
+
+function isAlignedWordAddress(address: number): boolean {
+  return address % 4 === 0;
+}
+
+function errorEvent(cycle: number, slot: StageSlot, message: string): PipelineEvent {
+  return {
+    id: eventId(cycle, "error", slot.instructionId),
+    cycle,
+    instructionId: slot.instructionId,
+    kind: "error",
+    label: "error",
+    message,
+    detail: { pc: slot.pc },
+  };
 }

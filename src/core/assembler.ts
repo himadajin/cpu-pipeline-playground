@@ -10,13 +10,20 @@ const INSTRUCTION_SET = new Set<Opcode>([
   "bne",
   "blt",
   "jal",
-  "nop",
   "and",
   "or",
   "xor",
   "sll",
   "srl",
 ]);
+const ASSEMBLER_MNEMONICS = new Set<string>([...INSTRUCTION_SET, "nop"]);
+const INSTRUCTION_SIZE_BYTES = 4;
+const SIGNED_12_MIN = -2048;
+const SIGNED_12_MAX = 2047;
+const B_OFFSET_MIN = -4096;
+const B_OFFSET_MAX = 4094;
+const J_OFFSET_MIN = -1_048_576;
+const J_OFFSET_MAX = 1_048_574;
 
 const REGISTER_ALIASES: Record<string, number> = {
   zero: 0,
@@ -58,6 +65,7 @@ interface ParsedLine {
   line: number;
   text: string;
   body: string;
+  pc: number;
 }
 
 export function assemble(source: string): AssembleResult {
@@ -88,8 +96,8 @@ export function assemble(source: string): AssembleResult {
       if (!body) return;
     }
 
-    parsedLines.push({ line, text, body });
-    pc += 1;
+    parsedLines.push({ line, text, body, pc });
+    pc += INSTRUCTION_SIZE_BYTES;
   });
 
   const instructions: Instruction[] = [];
@@ -106,8 +114,8 @@ export function assemble(source: string): AssembleResult {
   };
 }
 
-export function instructionSet(): Opcode[] {
-  return Array.from(INSTRUCTION_SET);
+export function instructionSet(): string[] {
+  return Array.from(ASSEMBLER_MNEMONICS);
 }
 
 function parseInstruction(
@@ -117,8 +125,9 @@ function parseInstruction(
   errors: AssembleError[],
 ): Instruction | null {
   const [opToken, rest = ""] = splitWhitespace(parsed.body);
-  const op = opToken.toLowerCase() as Opcode;
-  if (!INSTRUCTION_SET.has(op)) {
+  const mnemonic = opToken.toLowerCase();
+  const op = mnemonic as Opcode;
+  if (!ASSEMBLER_MNEMONICS.has(mnemonic)) {
     errors.push({ line: parsed.line, column: 1, message: `Unknown instruction "${opToken}".` });
     return null;
   }
@@ -138,9 +147,9 @@ function parseInstruction(
     text: parsed.body,
   };
 
-  if (op === "nop") {
+  if (mnemonic === "nop") {
     if (args.length !== 0) return fail("nop does not take operands.");
-    return base;
+    return { ...base, op: "addi", rd: 0, rs1: 0, imm: 0 };
   }
 
   if (["add", "sub", "and", "or", "xor", "sll", "srl"].includes(op)) {
@@ -158,6 +167,7 @@ function parseInstruction(
     const rs1 = parseRegister(args[1]);
     const imm = parseImmediate(args[2]);
     if (rd == null || rs1 == null || imm == null) return fail(`Invalid addi operands in "${parsed.body}".`);
+    if (!isSigned12(imm)) return fail("addi immediate must be a signed 12-bit value (-2048..2047).");
     return { ...base, rd, rs1, imm };
   }
 
@@ -166,6 +176,7 @@ function parseInstruction(
     const rd = parseRegister(args[0]);
     const memory = parseMemoryOperand(args[1]);
     if (rd == null || !memory) return fail(`Invalid lw operands in "${parsed.body}".`);
+    if (!isSigned12(memory.offset)) return fail("lw offset must be a signed 12-bit value (-2048..2047).");
     return { ...base, rd, rs1: memory.base, imm: memory.offset };
   }
 
@@ -174,6 +185,7 @@ function parseInstruction(
     const rs2 = parseRegister(args[0]);
     const memory = parseMemoryOperand(args[1]);
     if (rs2 == null || !memory) return fail(`Invalid sw operands in "${parsed.body}".`);
+    if (!isSigned12(memory.offset)) return fail("sw offset must be a signed 12-bit value (-2048..2047).");
     return { ...base, rs1: memory.base, rs2, imm: memory.offset };
   }
 
@@ -184,6 +196,10 @@ function parseInstruction(
     const target = labels[args[2]];
     if (rs1 == null || rs2 == null) return fail(`Invalid branch registers in "${parsed.body}".`);
     if (target === undefined) return fail(`Unknown label "${args[2]}".`);
+    const offset = target - parsed.pc;
+    if (!isAlignedInstructionAddress(target) || !isBranchOffset(offset)) {
+      return fail(`${op} target must be 4-byte aligned and fit a signed 13-bit PC-relative offset.`);
+    }
     return { ...base, rs1, rs2, target, label: args[2] };
   }
 
@@ -193,6 +209,10 @@ function parseInstruction(
     const target = labels[args[1]];
     if (rd == null) return fail(`Invalid jal destination in "${parsed.body}".`);
     if (target === undefined) return fail(`Unknown label "${args[1]}".`);
+    const offset = target - parsed.pc;
+    if (!isAlignedInstructionAddress(target) || !isJumpOffset(offset)) {
+      return fail("jal target must be 4-byte aligned and fit a signed 21-bit PC-relative offset.");
+    }
     return { ...base, rd, target, label: args[1] };
   }
 
@@ -222,8 +242,28 @@ function parseRegister(token: string): number | null {
 
 function parseImmediate(token: string): number | null {
   const normalized = token.trim().toLowerCase();
-  const value = normalized.startsWith("0x") ? Number.parseInt(normalized, 16) : Number.parseInt(normalized, 10);
+  const value = /^-?0x[0-9a-f]+$/.test(normalized)
+    ? Number.parseInt(normalized.replace("0x", ""), 16)
+    : /^-?\d+$/.test(normalized)
+      ? Number.parseInt(normalized, 10)
+      : Number.NaN;
   return Number.isFinite(value) ? value : null;
+}
+
+function isSigned12(value: number): boolean {
+  return Number.isInteger(value) && value >= SIGNED_12_MIN && value <= SIGNED_12_MAX;
+}
+
+function isAlignedInstructionAddress(value: number): boolean {
+  return value % INSTRUCTION_SIZE_BYTES === 0;
+}
+
+function isBranchOffset(value: number): boolean {
+  return Number.isInteger(value) && value >= B_OFFSET_MIN && value <= B_OFFSET_MAX && value % 2 === 0;
+}
+
+function isJumpOffset(value: number): boolean {
+  return Number.isInteger(value) && value >= J_OFFSET_MIN && value <= J_OFFSET_MAX && value % 2 === 0;
 }
 
 function parseMemoryOperand(token: string): { offset: number; base: number } | null {

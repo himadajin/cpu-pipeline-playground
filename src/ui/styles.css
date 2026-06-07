@@ -913,8 +913,26 @@ input {
   white-space: nowrap;
 }
 
+.register-value-stack {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+}
+
+.register-secondary {
+  max-width: 100%;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .register-cell.changed .register-name,
-.register-cell.changed .register-value {
+.register-cell.changed .register-value,
+.register-cell.changed .register-secondary {
   color: var(--accent-text);
 }
 
