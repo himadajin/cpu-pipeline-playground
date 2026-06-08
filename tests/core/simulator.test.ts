@@ -256,6 +256,38 @@ addi x4, x0, 1
     expect(simulation.current.registers[4]).toBe(1);
   });
 
+  it("executes signed and unsigned branch comparisons", () => {
+    const program = assembled(`
+bge x1, x2, bge_false
+addi x3, x0, 1
+bge_false:
+bge x2, x1, bge_true
+addi x4, x0, 1
+bge_true:
+bltu x1, x2, bltu_false
+addi x5, x0, 1
+bltu_false:
+bltu x2, x1, bltu_true
+addi x6, x0, 1
+bltu_true:
+bgeu x2, x1, bgeu_false
+addi x7, x0, 1
+bgeu_false:
+bgeu x1, x2, bgeu_true
+addi x8, x0, 1
+bgeu_true:
+addi x9, x0, 1
+`);
+    const simulation = runSimulation(createSimulation(program, { registers: { 1: -1, 2: 1 } }));
+    expect(simulation.current.registers[3]).toBe(1);
+    expect(simulation.current.registers[4]).toBe(0);
+    expect(simulation.current.registers[5]).toBe(1);
+    expect(simulation.current.registers[6]).toBe(0);
+    expect(simulation.current.registers[7]).toBe(1);
+    expect(simulation.current.registers[8]).toBe(0);
+    expect(simulation.current.registers[9]).toBe(1);
+  });
+
   it("uses unsigned uint32 comparison for sltu", () => {
     const program = assembled(`
 sltu x3, x1, x2
@@ -264,6 +296,50 @@ sltu x4, x2, x1
     const simulation = runSimulation(createSimulation(program, { registers: { 1: -1, 2: 1 } }));
     expect(simulation.current.registers[3]).toBe(0);
     expect(simulation.current.registers[4]).toBe(1);
+  });
+
+  it("executes signed and immediate compare instructions", () => {
+    const program = assembled(`
+slt x3, x1, x2
+slt x4, x2, x1
+slti x5, x1, 1
+slti x6, x2, -1
+sltiu x7, x1, 1
+sltiu x8, x2, -1
+`);
+    const simulation = runSimulation(createSimulation(program, { registers: { 1: -1, 2: 1 } }));
+    expect(simulation.current.registers[3]).toBe(1);
+    expect(simulation.current.registers[4]).toBe(0);
+    expect(simulation.current.registers[5]).toBe(1);
+    expect(simulation.current.registers[6]).toBe(0);
+    expect(simulation.current.registers[7]).toBe(0);
+    expect(simulation.current.registers[8]).toBe(1);
+  });
+
+  it("executes immediate bitwise logic with signed 12-bit immediates", () => {
+    const program = assembled(`
+andi x2, x1, 0xff
+ori x3, x1, -1
+xori x4, x1, 0x7ff
+`);
+    const simulation = runSimulation(createSimulation(program, { registers: { 1: 0x12345678 } }));
+    expect(simulation.current.registers[2]).toBe(0x78);
+    expect(simulation.current.registers[3]).toBe(-1);
+    expect(simulation.current.registers[4]).toBe(0x12345187);
+  });
+
+  it("executes register and immediate shift instructions", () => {
+    const program = assembled(`
+sra x3, x1, x2
+slli x4, x1, 1
+srli x5, x1, 1
+srai x6, x1, 1
+`);
+    const simulation = runSimulation(createSimulation(program, { registers: { 1: -8, 2: 1 } }));
+    expect(simulation.current.registers[3]).toBe(-4);
+    expect(simulation.current.registers[4]).toBe(-16);
+    expect(simulation.current.registers[5]).toBe(0x7ffffffc);
+    expect(simulation.current.registers[6]).toBe(-4);
   });
 
   it("loads signed bytes from byte memory", () => {
@@ -275,6 +351,19 @@ sltu x4, x2, x1
     );
     expect(simulation.current.registers[2]).toBe(-1);
     expect(simulation.current.registers[3]).toBe(127);
+  });
+
+  it("loads zero-extended bytes and signed or zero-extended halfwords", () => {
+    const simulation = runSimulation(
+      createSimulation(assembled("lbu x2, 1(x1)\nlh x3, 2(x1)\nlhu x4, 2(x1)\nlh x5, 4(x1)\n"), {
+        registers: { 1: 16 },
+        memory: { 17: 0xff, 18: 0x80, 19: 0xff, 20: 0x34, 21: 0x12 },
+      }),
+    );
+    expect(simulation.current.registers[2]).toBe(255);
+    expect(simulation.current.registers[3]).toBe(-128);
+    expect(simulation.current.registers[4]).toBe(0xff80);
+    expect(simulation.current.registers[5]).toBe(0x1234);
   });
 
   it("stores one byte at unaligned byte addresses and records one byte diff", () => {
@@ -295,6 +384,22 @@ sltu x4, x2, x1
     );
   });
 
+  it("stores little-endian halfwords and records two byte diffs", () => {
+    const simulation = runSimulation(
+      createSimulation(assembled("sh x2, 2(x1)\n"), {
+        registers: { 1: 16, 2: 0x12345678 },
+        memory: { 18: 0xaa, 19: 0xbb, 20: 0xcc },
+      }),
+    );
+    expect(simulation.current.memory[18]).toBe(0x78);
+    expect(simulation.current.memory[19]).toBe(0x56);
+    expect(simulation.current.memory[20]).toBe(0xcc);
+    expect(simulation.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([
+      { address: 18, before: 0xaa, after: 0x78 },
+      { address: 19, before: 0xbb, after: 0x56 },
+    ]);
+  });
+
   it("stalls when an instruction depends on a loaded byte", () => {
     const program = assembled(`
 lb x2, 1(x1)
@@ -310,6 +415,23 @@ addi x3, x2, 1
       true,
     );
     expect(simulation.current.registers[3]).toBe(128);
+  });
+
+  it("stalls when an instruction depends on a loaded halfword", () => {
+    const program = assembled(`
+lh x2, 0(x1)
+addi x3, x2, 1
+`);
+    const simulation = runSimulation(
+      createSimulation(program, {
+        registers: { 1: 16 },
+        memory: { 16: 0xff, 17: 0x7f },
+      }),
+    );
+    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
+      true,
+    );
+    expect(simulation.current.registers[3]).toBe(0x8000);
   });
 
   it("loads little-endian words from byte memory", () => {
@@ -344,6 +466,16 @@ addi x3, x2, 1
     expect(load.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
 
     const store = runSimulation(createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 18, 2: 1 } }));
+    expect(store.current.halted).toBe(true);
+    expect(store.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
+  });
+
+  it("halts with an error event on unaligned halfword memory access", () => {
+    const load = runSimulation(createSimulation(assembled("lh x2, 0(x1)\n"), { registers: { 1: 17 } }));
+    expect(load.current.halted).toBe(true);
+    expect(load.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
+
+    const store = runSimulation(createSimulation(assembled("sh x2, 0(x1)\n"), { registers: { 1: 17, 2: 1 } }));
     expect(store.current.halted).toBe(true);
     expect(store.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
   });

@@ -71,6 +71,36 @@
       "file": "compare-byte-memory.asm",
       "kind": "memory",
       "description": "Covers unsigned comparison plus signed byte load and byte store behavior."
+    },
+    {
+      "id": "compare-family",
+      "file": "compare-family.asm",
+      "kind": "alu",
+      "description": "Covers signed and unsigned register and immediate comparison."
+    },
+    {
+      "id": "branch-family",
+      "file": "branch-family.asm",
+      "kind": "control",
+      "description": "Covers signed and unsigned branch comparisons."
+    },
+    {
+      "id": "immediate-alu",
+      "file": "immediate-alu.asm",
+      "kind": "alu",
+      "description": "Covers signed 12-bit immediate bitwise logic."
+    },
+    {
+      "id": "shift-family",
+      "file": "shift-family.asm",
+      "kind": "alu",
+      "description": "Covers register and immediate logical and arithmetic shifts."
+    },
+    {
+      "id": "load-store-widths",
+      "file": "load-store-widths.asm",
+      "kind": "memory",
+      "description": "Covers byte, halfword, and word load/store widths."
     }
   ]
 }

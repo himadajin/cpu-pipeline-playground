@@ -1,4 +1,10 @@
-import { toByteAddress, toRegisterIndex, toSigned12Immediate, toUpper20Immediate } from "./numbers";
+import {
+  toByteAddress,
+  toRegisterIndex,
+  toShiftAmountImmediate,
+  toSigned12Immediate,
+  toUpper20Immediate,
+} from "./numbers";
 import {
   ASSEMBLER_MNEMONICS,
   isAssemblerMnemonic,
@@ -17,6 +23,8 @@ const J_OFFSET_MIN = -1_048_576;
 const J_OFFSET_MAX = 1_048_574;
 const UPPER_20_MIN = 0;
 const UPPER_20_MAX = 0xfffff;
+const SHAMT_MIN = 0;
+const SHAMT_MAX = 31;
 
 const REGISTER_ALIASES: Record<string, number> = {
   zero: 0,
@@ -163,17 +171,27 @@ function parseInstruction(
     return { ...base, op, rd, rs1, rs2 };
   }
 
-  if (op === "addi") {
-    if (args.length !== 3) return fail("addi expects rd, rs1, imm.");
+  if (op === "addi" || op === "slti" || op === "sltiu" || op === "andi" || op === "ori" || op === "xori") {
+    if (args.length !== 3) return fail(`${op} expects rd, rs1, imm.`);
     const rd = parseRegister(args[0]);
     const rs1 = parseRegister(args[1]);
     const imm = parseImmediate(args[2]);
-    if (rd == null || rs1 == null || imm == null) return fail(`Invalid addi operands in "${parsed.body}".`);
-    if (!isSigned12(imm)) return fail("addi immediate must be a signed 12-bit value (-2048..2047).");
+    if (rd == null || rs1 == null || imm == null) return fail(`Invalid ${op} operands in "${parsed.body}".`);
+    if (!isSigned12(imm)) return fail(`${op} immediate must be a signed 12-bit value (-2048..2047).`);
     return { ...base, op, rd, rs1, imm: toSigned12Immediate(imm) };
   }
 
-  if (op === "lb" || op === "lw") {
+  if (op === "slli" || op === "srli" || op === "srai") {
+    if (args.length !== 3) return fail(`${op} expects rd, rs1, shamt.`);
+    const rd = parseRegister(args[0]);
+    const rs1 = parseRegister(args[1]);
+    const imm = parseImmediate(args[2]);
+    if (rd == null || rs1 == null || imm == null) return fail(`Invalid ${op} operands in "${parsed.body}".`);
+    if (!isShiftAmount(imm)) return fail(`${op} shift amount must be a 5-bit value (0..31).`);
+    return { ...base, op, rd, rs1, imm: toShiftAmountImmediate(imm) };
+  }
+
+  if (op === "lb" || op === "lbu" || op === "lh" || op === "lhu" || op === "lw") {
     if (args.length !== 2) return fail(`${op} expects rd, offset(rs1).`);
     const rd = parseRegister(args[0]);
     const memory = parseMemoryOperand(args[1]);
@@ -191,7 +209,7 @@ function parseInstruction(
     return { ...base, op, rd, rs1: memory.base, imm: toSigned12Immediate(memory.offset) };
   }
 
-  if (op === "sb" || op === "sw") {
+  if (op === "sb" || op === "sh" || op === "sw") {
     if (args.length !== 2) return fail(`${op} expects rs2, offset(rs1).`);
     const rs2 = parseRegister(args[0]);
     const memory = parseMemoryOperand(args[1]);
@@ -289,6 +307,10 @@ function isJumpOffset(value: number): boolean {
 
 function isUpper20(value: number): boolean {
   return Number.isInteger(value) && value >= UPPER_20_MIN && value <= UPPER_20_MAX;
+}
+
+function isShiftAmount(value: number): boolean {
+  return Number.isInteger(value) && value >= SHAMT_MIN && value <= SHAMT_MAX;
 }
 
 function parseMemoryOperand(token: string): { offset: number; base: RegisterIndex } | null {
