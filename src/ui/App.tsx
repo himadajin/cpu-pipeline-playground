@@ -48,6 +48,7 @@ export function App() {
             onDuplicate={programLibrary.actions.duplicateSelectedProgram}
             onRename={programLibrary.actions.renameProgram}
             onDelete={programLibrary.actions.deleteProgram}
+            onRestoreInitialSamples={programLibrary.actions.restoreInitialPrograms}
           />
           <div className="toolbar-spacer" />
           <ToolbarButton label="Reset" onClick={session.actions.reset} disabled={!assembled.ok}>

@@ -15,6 +15,7 @@ export function ProgramSwitcher({
   onDuplicate,
   onRename,
   onDelete,
+  onRestoreInitialSamples,
 }: {
   programs: ProgramDocument[];
   selectedProgram: ProgramDocument;
@@ -25,6 +26,7 @@ export function ProgramSwitcher({
   onDuplicate: () => void;
   onRename: (programId: string, name: string) => void;
   onDelete: (programId: string) => void;
+  onRestoreInitialSamples: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -53,6 +55,16 @@ export function ProgramSwitcher({
     if (!editingId) return;
     onRename(editingId, draftName.trim() || "Untitled");
     setEditingId(null);
+  }
+
+  function restoreInitialSamples() {
+    const confirmed = window.confirm(
+      "Replace all programs with the initial samples? Your current library will be removed.",
+    );
+    if (!confirmed) return;
+    onRestoreInitialSamples();
+    setEditingId(null);
+    setOpen(false);
   }
 
   return (
@@ -140,6 +152,16 @@ export function ProgramSwitcher({
                 </div>
               );
             })}
+          </div>
+          <div className="program-menu-footer">
+            <button
+              className="program-restore-action"
+              type="button"
+              aria-label="Restore initial samples"
+              onClick={restoreInitialSamples}
+            >
+              Restore initial samples
+            </button>
           </div>
         </div>
       )}
