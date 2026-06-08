@@ -74,8 +74,8 @@ describe("App", () => {
     );
     expect(registerNames).toEqual(Array.from({ length: 32 }, (_, index) => `x${index}`));
     expect(registerGrid.querySelector(".register-cell.changed .register-name")?.textContent).toBe("x1");
-    expect(registerGrid).toHaveTextContent("0x00000004");
-    expect(registerGrid).toHaveTextContent("4");
+    expect(registerGrid).toHaveTextContent("0x00000001");
+    expect(registerGrid).toHaveTextContent("1");
   });
 
   it("shows byte-addressed memory grouped as little-endian words", async () => {
@@ -196,11 +196,11 @@ describe("App", () => {
   it("renames the selected program from the program switcher", async () => {
     render(<App />);
     await userEvent.click(screen.getByRole("button", { name: /Select program:/ }));
-    await userEvent.click(screen.getByRole("button", { name: "Rename Forwarding chain" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rename Sum four numbers" }));
     const nameInput = screen.getByLabelText("Program name");
     await userEvent.clear(nameInput);
-    await userEvent.type(nameInput, "Forwarding renamed{Enter}");
-    expect(screen.getByRole("button", { name: /Select program: Forwarding renamed/ })).toBeInTheDocument();
+    await userEvent.type(nameInput, "Sum renamed{Enter}");
+    expect(screen.getByRole("button", { name: /Select program: Sum renamed/ })).toBeInTheDocument();
   });
 
   it("disables delete when only one program exists", async () => {

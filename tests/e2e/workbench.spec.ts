@@ -106,12 +106,12 @@ test("program library, stepping, timeline selection, and inspector work", async 
 
   await page.getByRole("button", { name: /Select program:/ }).click();
   await expect(page.getByRole("menu", { name: "Programs" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Rename Forwarding chain/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Delete Forwarding chain/ })).toBeVisible();
-  await page.getByRole("button", { name: "Rename Forwarding chain" }).click();
-  await page.getByLabel("Program name").fill("Forwarding renamed");
+  await expect(page.getByRole("button", { name: /Rename Sum four numbers/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Delete Sum four numbers/ })).toBeVisible();
+  await page.getByRole("button", { name: "Rename Sum four numbers" }).click();
+  await page.getByLabel("Program name").fill("Sum renamed");
   await page.getByLabel("Program name").press("Enter");
-  await expect(page.getByRole("button", { name: /Select program: Forwarding renamed/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Select program: Sum renamed/ })).toBeVisible();
   await page.getByRole("button", { name: "New program" }).click();
   await expect(page.getByLabel("Program name")).toHaveValue("Untitled");
   await page.getByLabel("Program name").press("Enter");

@@ -2,43 +2,75 @@ import type { ProgramDocument } from "./types";
 
 export const SAMPLE_PROGRAMS: ProgramDocument[] = [
   {
-    id: "sample-forwarding",
-    name: "Forwarding chain",
+    id: "sample-sum-four",
+    name: "Sum four numbers",
     updatedAt: 0,
-    source: `# Forwarding keeps these ALU dependencies moving.
-addi x1, x0, 4
-addi x2, x0, 7
-add x3, x1, x2
-sub x4, x3, x1
-and x5, x4, x2
-or x6, x5, x1
+    source: `# Sum 1 + 2 + 3 + 4 into x5.
+addi x1, x0, 1
+addi x2, x0, 2
+addi x3, x0, 3
+addi x4, x0, 4
+add x5, x1, x2
+add x5, x5, x3
+add x5, x5, x4
 `,
   },
   {
-    id: "sample-load-use",
-    name: "Load-use stall",
+    id: "sample-store-reload",
+    name: "Store and reload",
     updatedAt: 0,
-    source: `# The add after lw stalls for one cycle.
+    source: `# Store a temporary value, load it back, then add 8.
 addi x1, x0, 16
-addi x2, x0, 42
+addi x2, x0, 34
 sw x2, 0(x1)
 lw x3, 0(x1)
-add x4, x3, x2
+addi x4, x3, 8
 `,
   },
   {
-    id: "sample-branch",
-    name: "Branch flush",
+    id: "sample-choose-larger",
+    name: "Choose larger value",
     updatedAt: 0,
-    source: `addi x1, x0, 3
-addi x2, x0, 0
-loop:
-addi x2, x2, 1
-blt x2, x1, loop
+    source: `# Put the larger of x1 and x2 into x5.
+addi x1, x0, 9
+addi x2, x0, 14
+blt x1, x2, use_second
+add x5, x0, x1
 jal x0, done
-addi x9, x0, 99
+use_second:
+add x5, x0, x2
 done:
-xor x5, x2, x1
+nop
+`,
+  },
+  {
+    id: "sample-counted-loop-sum",
+    name: "Counted loop sum",
+    updatedAt: 0,
+    source: `# Sum 1 through 5 into x5.
+addi x1, x0, 5
+addi x2, x0, 1
+addi x5, x0, 0
+loop:
+add x5, x5, x2
+addi x2, x2, 1
+bge x1, x2, loop
+`,
+  },
+  {
+    id: "sample-two-word-memory-sum",
+    name: "Two-word memory sum",
+    updatedAt: 0,
+    source: `# Add two memory words and store the result.
+addi x1, x0, 32
+addi x2, x0, 7
+addi x3, x0, 11
+sw x2, 0(x1)
+sw x3, 4(x1)
+lw x4, 0(x1)
+lw x5, 4(x1)
+add x6, x4, x5
+sw x6, 8(x1)
 `,
   },
 ];
