@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { assemble, type ProgramDocument } from "../../core";
-import { createProgram, duplicateProgram, loadPrograms, savePrograms } from "../programStore";
+import { createInitialPrograms, createProgram, duplicateProgram, loadPrograms, savePrograms } from "../programStore";
 
 export type ProgramStatus = { errors: number };
 
@@ -66,6 +66,12 @@ export function usePrograms() {
     }
   }
 
+  function restoreInitialPrograms() {
+    const nextPrograms = createInitialPrograms();
+    setPrograms(nextPrograms);
+    setSelectedProgramId(nextPrograms[0]?.id ?? "");
+  }
+
   return {
     programs,
     selectedProgram,
@@ -76,6 +82,7 @@ export function usePrograms() {
       deleteProgram,
       duplicateSelectedProgram,
       renameProgram: (programId: string, name: string) => updateProgramById(programId, { name }),
+      restoreInitialPrograms,
       selectProgram,
       updateProgramById,
       updateSelectedProgram,

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/ui/App";
 
 const LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v1";
@@ -16,6 +16,10 @@ function pointerEvent(type: string, coords: { clientX?: number; clientY?: number
 describe("App", () => {
   beforeEach(() => {
     window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("renders the workbench and steps a program", async () => {
@@ -201,6 +205,55 @@ describe("App", () => {
     await userEvent.clear(nameInput);
     await userEvent.type(nameInput, "Sum renamed{Enter}");
     expect(screen.getByRole("button", { name: /Select program: Sum renamed/ })).toBeInTheDocument();
+  });
+
+  it("keeps the current library when restoring initial samples is canceled", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    window.localStorage.setItem(
+      PROGRAM_STORAGE_KEY,
+      JSON.stringify([{ id: "custom", name: "Custom program", source: "addi x1, x0, 9\n", updatedAt: 0 }]),
+    );
+
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: /Select program:/ }));
+    expect(screen.getByRole("button", { name: "Restore initial samples" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Restore initial samples" }));
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      "Replace all programs with the initial samples? Your current library will be removed.",
+    );
+    expect(screen.getByRole("button", { name: /Select program: Custom program/ })).toBeInTheDocument();
+  });
+
+  it("restores the initial samples after confirmation", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.localStorage.setItem(
+      PROGRAM_STORAGE_KEY,
+      JSON.stringify([{ id: "custom", name: "Custom program", source: "addi x1, x0, 9\n", updatedAt: 0 }]),
+    );
+
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: /Select program:/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Restore initial samples" }));
+
+    expect(screen.getByRole("button", { name: /Select program: Sum four numbers/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Select program:/ }));
+    expect(screen.getByText("Store and reload")).toBeInTheDocument();
+    expect(screen.getByText("Choose larger value")).toBeInTheDocument();
+    expect(screen.getByText("Counted loop sum")).toBeInTheDocument();
+    expect(screen.getByText("Two-word memory sum")).toBeInTheDocument();
+    expect(screen.queryByText("Custom program")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(PROGRAM_STORAGE_KEY) ?? "[]") as Array<{ name: string }>;
+      expect(stored.map((program) => program.name)).toEqual([
+        "Sum four numbers",
+        "Store and reload",
+        "Choose larger value",
+        "Counted loop sum",
+        "Two-word memory sum",
+      ]);
+    });
   });
 
   it("disables delete when only one program exists", async () => {

@@ -5,11 +5,11 @@ const STORAGE_KEY = "cpu-pipeline-playground.programs.v1";
 export function loadPrograms(): ProgramDocument[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return seedPrograms();
+    if (!raw) return createInitialPrograms();
     const parsed = JSON.parse(raw) as ProgramDocument[];
-    return parsed.length > 0 ? parsed : seedPrograms();
+    return parsed.length > 0 ? parsed : createInitialPrograms();
   } catch {
-    return seedPrograms();
+    return createInitialPrograms();
   }
 }
 
@@ -35,7 +35,7 @@ export function duplicateProgram(program: ProgramDocument, existing: ProgramDocu
   };
 }
 
-function seedPrograms(): ProgramDocument[] {
+export function createInitialPrograms(): ProgramDocument[] {
   return SAMPLE_PROGRAMS.map((program) => ({ ...program, id: `${program.id}-${crypto.randomUUID()}` }));
 }
 

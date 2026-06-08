@@ -108,6 +108,7 @@ test("program library, stepping, timeline selection, and inspector work", async 
   await expect(page.getByRole("menu", { name: "Programs" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Rename Sum four numbers/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Delete Sum four numbers/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Restore initial samples" })).toBeVisible();
   await page.getByRole("button", { name: "Rename Sum four numbers" }).click();
   await page.getByLabel("Program name").fill("Sum renamed");
   await page.getByLabel("Program name").press("Enter");
