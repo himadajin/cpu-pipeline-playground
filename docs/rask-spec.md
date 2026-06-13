@@ -56,34 +56,44 @@ IF/ID、ID/EX、EX/MEM、MEM/WB の 4 ラッチを定義する。フィールド
 
 全ラッチが持つ共通メタデータは以下とする。
 
-| フィールド | 意味 |
-| --- | --- |
-| `bubble` | `true` のとき他の全フィールドは無効である。バブルはハザード検出の対象外であり、各ステージは何の作用も計算しない。プログラム中の実 NOP、つまり `addi x0, x0, 0` とは区別される |
-| `seqId` | フェッチ時に採番される動的命令の一意 ID。フラッシュされた命令の ID は再利用しない |
-| `pc` | 当該命令のフェッチアドレス |
-| `errorKind` | 7 章のエラー種別。`none` 以外のとき当該命令は作用を持たない |
+- `bubble`: `true` のとき他の全フィールドは無効である。バブルはハザード検出の対象外であり、各ステージは何の作用も計算しない。プログラム中の実 NOP、つまり `addi x0, x0, 0` とは区別される
+- `seqId`: フェッチ時に採番される動的命令の一意 ID。フラッシュされた命令の ID は再利用しない
+- `pc`: 当該命令のフェッチアドレス
+- `errorKind`: 7 章のエラー種別。`none` 以外のとき当該命令は作用を持たない
 
 ラッチ固有フィールドは以下とする。
 
-| ラッチ | フィールド |
-| --- | --- |
-| IF/ID | `instr`。命令ビット列。`errorKind != none` のとき無効 |
-| ID/EX | `rs1Val`、`rs2Val`、`imm`、`rd`、`ctrl` 全信号 |
-| EX/MEM | `aluResult`、`storeData = rs2Val` の通過値、`rd`、`ctrl` のうち `memOp`、`regWrite`、`wbSel`、`isEbreak` |
-| MEM/WB | `wbValue`、`rd`、`regWrite`、`isEbreak`、`memAccess` |
+- IF/ID: `instr`。命令ビット列。`errorKind != none` のとき無効
+- ID/EX: `rs1Val`、`rs2Val`、`imm`、`rd`、`ctrl` 全信号
+- EX/MEM: `aluResult`、`storeData = rs2Val` の通過値、`rd`、`ctrl` のうち `memOp`、`regWrite`、`wbSel`、`isEbreak`
+- MEM/WB: `wbValue`、`rd`、`regWrite`、`isEbreak`、`memAccess`
 
 `ctrl` は ID が生産する制御信号の束であり、以下からなる。
 
-| 信号 | 値域 | 消費者 |
-| --- | --- | --- |
-| `aluOp` | `add`、`sub`、`and`、`or`、`xor`、`sll`、`srl`、`sra`、`slt`、`sltu` | EX |
-| `aluSrc1` | `reg`、`pc`、`zero` | EX |
-| `aluSrc2` | `reg`、`imm` | EX |
-| `redirectKind` | `none`、`beq`、`bne`、`blt`、`bge`、`bltu`、`bgeu`、`jal`、`jalr` | ハザードユニット |
-| `memOp` | 方向 `{none, load, store}` × 幅 `{byte, half, word}` × 符号拡張の有無 | MEM |
-| `regWrite` | bool | WB、ハザードユニット |
-| `wbSel` | `alu`、`mem`、`pc4` | MEM |
-| `isEbreak` | bool | WB |
+- `aluOp`
+  - 値域: `add`、`sub`、`and`、`or`、`xor`、`sll`、`srl`、`sra`、`slt`、`sltu`
+  - 消費者: EX
+- `aluSrc1`
+  - 値域: `reg`、`pc`、`zero`
+  - 消費者: EX
+- `aluSrc2`
+  - 値域: `reg`、`imm`
+  - 消費者: EX
+- `redirectKind`
+  - 値域: `none`、`beq`、`bne`、`blt`、`bge`、`bltu`、`bgeu`、`jal`、`jalr`
+  - 消費者: ハザードユニット
+- `memOp`
+  - 値域: 方向 `{none, load, store}` × 幅 `{byte, half, word}` × 符号拡張の有無
+  - 消費者: MEM
+- `regWrite`
+  - 値域: bool
+  - 消費者: WB、ハザードユニット
+- `wbSel`
+  - 値域: `alu`、`mem`、`pc4`
+  - 消費者: MEM
+- `isEbreak`
+  - 値域: bool
+  - 消費者: WB
 
 MEM/WB に `wbSel` は存在しない。MEM が `wbSel` を解決して `wbValue` 一本に畳むため、WB は値の出自を知らない。`lui` は `aluSrc1 = zero`、`auipc` と JAL/JALR のターゲットを除くリンク値は `aluSrc1 = pc` により、特例なく `aluOp = add` に還元される。
 
