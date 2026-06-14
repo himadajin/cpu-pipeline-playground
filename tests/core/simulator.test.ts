@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { assemble, createSimulation, RASK_RESET_PC, runSimulation, stepSimulation } from "../../src/core";
+import {
+  assemble,
+  createSimulation,
+  formatPipelineOccupancyTable,
+  formatRetireLog,
+  RASK_RAM_LIMIT_EXCLUSIVE,
+  RASK_RESET_PC,
+  RASK_UART_DATA_ADDRESS,
+  runSimulation,
+  stepSimulation,
+  type ExecutionImage,
+} from "../../src/core";
+import { toByteAddress, toInstructionWord } from "../../src/core/numbers";
 
 const RESET_LINK = -2147483648;
 const DATA_ADDRESS = RASK_RESET_PC + 0x10000;
+const JAL_X0_ZERO = 0x0000006f;
 
 function assembled(source: string) {
   const result = assemble(source);
@@ -186,6 +199,7 @@ addi x8, x0, 2
       2: "..FFFFDDDDXMW",
       3: "......FFFFDD",
     });
+    expect(formatPipelineOccupancyTable(simulation.current)).toContain("S3");
   });
 
   it("lets redirect win when a younger stalled instruction would otherwise hold fetch", () => {
@@ -290,6 +304,8 @@ addi x4, x0, 7
     expect(misaligned.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(
       true,
     );
+    expect(misaligned.current.registers[1]).toBe(0);
+    expect(misaligned.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "fetch-misaligned" });
   });
 
   it("stalls when jalr depends on a loaded source register", () => {
@@ -615,6 +631,8 @@ addi x3, x2, 1
     );
     expect(store.current.halted).toBe(true);
     expect(store.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
+    expect(store.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([]);
+    expect(store.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "mem-misaligned" });
   });
 
   it("halts with an error event on unaligned halfword memory access", () => {
@@ -637,6 +655,8 @@ addi x3, x2, 1
     const mmioLoad = runSimulation(createSimulation(assembled("lb x2, 0(x1)\n"), { registers: { 1: 0x10000000 } }));
     expect(mmioLoad.current.halted).toBe(true);
     expect(mmioLoad.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
+    expect(unmapped.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "mem-unmapped" });
+    expect(mmioLoad.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "mmio-violation" });
   });
 
   it("records UART output and exit device requests without RAM diffs", () => {
@@ -654,6 +674,19 @@ addi x3, x2, 1
       .find((slot) => slot?.exitRequest);
     expect(exitSlot?.exitRequest).toEqual({ code: 0, success: true });
     expect(exit.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([]);
+    expect(exit.current.terminalRecord).toEqual({ kind: "exit", code: 0 });
+    expect(formatRetireLog(exit.current)).toContain("store w [00100000]=00005555");
+    expect(formatRetireLog(exit.current).split("\n").at(-1)).toBe("EXIT 0");
+  });
+
+  it("suppresses device side effects when a device access errors", () => {
+    const simulation = runSimulation(
+      createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: RASK_UART_DATA_ADDRESS, 2: 0x41424344 } }),
+    );
+
+    expect(simulation.current.halted).toBe(true);
+    expect(simulation.current.consoleOutput).toEqual([]);
+    expect(simulation.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "mmio-violation" });
   });
 
   it("executes fence as a real no-op and identifies ebreak for later pause handling", () => {
@@ -671,6 +704,23 @@ addi x3, x2, 1
     );
   });
 
+  it("pauses on ebreak for interactive runs while non-interactive runs continue", () => {
+    const initial = createSimulation(assembled("addi x1, x0, 1\nebreak\naddi x2, x0, 2\n"));
+    const paused = runSimulation(initial, 50, { stopOnPause: true });
+
+    expect(paused.current.paused).toBe(true);
+    expect(paused.current.halted).toBe(false);
+    expect(formatRetireLog(paused.current)).not.toMatch(/cycle|seqId|S\d/);
+
+    const continued = runSimulation(paused, 50);
+    expect(continued.current.halted).toBe(true);
+    expect(continued.current.registers[2]).toBe(2);
+
+    const nonInteractive = runSimulation(initial);
+    expect(nonInteractive.current.halted).toBe(true);
+    expect(nonInteractive.current.registers[2]).toBe(2);
+  });
+
   it("reports ecall as a decode-time error condition", () => {
     const simulation = runSimulation(createSimulation(assembled("ecall\naddi x1, x0, 1\n")));
     const errorEvents = simulation.history
@@ -681,6 +731,46 @@ addi x3, x2, 1
     expect(simulation.current.registers[1]).toBe(0);
     expect(errorEvents).toHaveLength(1);
     expect(errorEvents[0]?.detail).toMatchObject({ errorKind: "ecall" });
+    expect(formatRetireLog(simulation.current).split("\n").at(-1)).toMatch(/^ERROR ecall /);
+  });
+
+  it("carries fetch and undefined-instruction errors until retire", () => {
+    const fetchError = runSimulation(createSimulation(rawImageAt([0x00000013], RASK_RAM_LIMIT_EXCLUSIVE)));
+    expect(fetchError.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "fetch-unmapped" });
+    expect(formatRetireLog(fetchError.current).split("\n").at(-1)).toBe(
+      `ERROR fetch-unmapped ${RASK_RAM_LIMIT_EXCLUSIVE.toString(16).padStart(8, "0")} --------`,
+    );
+
+    const undefinedInstruction = runSimulation(createSimulation(rawImageAt([0xffffffff])));
+    expect(undefinedInstruction.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "undef-instr" });
+    expect(formatRetireLog(undefinedInstruction.current).split("\n").at(-1)).toMatch(/^ERROR undef-instr /);
+  });
+
+  it("does not report errors from flushed wrong-path instructions", () => {
+    const decodeErrorFlushed = runSimulation(
+      createSimulation(
+        assembled(`
+jal x0, target
+ecall
+target:
+addi x1, x0, 1
+`),
+      ),
+    );
+    expect(decodeErrorFlushed.current.halted).toBe(true);
+    expect(decodeErrorFlushed.current.terminalRecord).toBeUndefined();
+    expect(
+      decodeErrorFlushed.history.flatMap((snapshot) => snapshot.events).filter((event) => event.kind === "error"),
+    ).toEqual([]);
+
+    const fetchErrorFlushed = runSimulation(
+      createSimulation(rawImageAt([JAL_X0_ZERO], RASK_RAM_LIMIT_EXCLUSIVE - 4)),
+      12,
+    );
+    expect(fetchErrorFlushed.current.halted).toBe(false);
+    expect(
+      fetchErrorFlushed.history.flatMap((snapshot) => snapshot.events).filter((event) => event.kind === "error"),
+    ).toEqual([]);
   });
 
   it("steps backward through history", async () => {
@@ -691,3 +781,20 @@ addi x3, x2, 1
     expect(back.current.cycle).toBe(0);
   });
 });
+
+function rawImageAt(words: number[], baseAddress = RASK_RESET_PC): ExecutionImage {
+  const instructions = words.map((word, index) => {
+    const address = toByteAddress(baseAddress + index * 4);
+    return {
+      id: index,
+      address,
+      word: toInstructionWord(word),
+      source: { line: index + 1, text: `.word 0x${word.toString(16).padStart(8, "0")}` },
+    };
+  });
+  return {
+    baseAddress: toByteAddress(baseAddress),
+    instructions,
+    instructionMemory: Object.fromEntries(instructions.map((instruction) => [instruction.address, instruction])),
+  };
+}

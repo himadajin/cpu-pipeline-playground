@@ -218,28 +218,63 @@ export interface ExitRequest {
 }
 
 export type DecodeErrorKind = "undef-instr" | "ecall";
+export type SimulatorErrorKind =
+  | "fetch-unmapped"
+  | "fetch-misaligned"
+  | DecodeErrorKind
+  | "mem-unmapped"
+  | "mem-misaligned"
+  | "mmio-violation";
 
 export interface DecodeError {
   kind: DecodeErrorKind;
   message: string;
 }
 
+export interface SimulatorError {
+  kind: SimulatorErrorKind;
+  message: string;
+}
+
+export type MemoryEffectWidth = "b" | "h" | "w";
+
+export interface MemoryEffect {
+  direction: "load" | "store";
+  width: MemoryEffectWidth;
+  address: ByteAddress;
+  value: number;
+}
+
+export interface RetireLogEntry {
+  pc: ByteAddress;
+  instructionWord: InstructionWord | null;
+  instruction: Instruction;
+  memoryEffect?: MemoryEffect;
+  register?: RegisterIndex;
+  registerValue?: Int32;
+}
+
+export type TerminalRecord =
+  | { kind: "exit"; code: number }
+  | { kind: "error"; errorKind: SimulatorErrorKind; pc: ByteAddress; instructionWord: InstructionWord | null };
+
 export interface StageSlot {
   seqId: number;
   instructionId: number;
   pc: ByteAddress;
-  instructionWord: InstructionWord;
+  instructionWord: InstructionWord | null;
   instruction: Instruction;
   decodeError?: DecodeError;
+  error?: SimulatorError;
   result?: Int32;
   address?: ByteAddress;
   storeValue?: Int32;
   loadedValue?: Int32;
+  memoryEffect?: MemoryEffect;
   taken?: boolean;
   nextPc?: ByteAddress;
   exitRequest?: ExitRequest;
   isEbreak?: boolean;
-  halted?: boolean;
 }
 
 export type StageSlots = Record<StageName, StageSlot | null>;
@@ -255,6 +290,7 @@ export interface PipelineLatches {
 export interface TimelineCell {
   cycle: number;
   seqId: number;
+  pc: ByteAddress;
   instructionId: number;
   stage: StageName;
   events: PipelineEvent[];
@@ -270,9 +306,13 @@ export interface CycleSnapshot {
   memory: ByteMemory;
   consoleOutput: ByteValue[];
   events: PipelineEvent[];
+  retireLog: RetireLogEntry[];
+  terminalRecord?: TerminalRecord;
   registerDiffs: RegisterDiff[];
   memoryDiffs: MemoryDiff[];
   timeline: TimelineCell[];
+  occupancyTable: string[];
+  paused: boolean;
   halted: boolean;
 }
 
