@@ -80,7 +80,7 @@ export function BottomDrawer({
           )}
           {activeTab === "events" && (
             <span className="mini-status">
-              {selectedCell ? `selected cycle ${snapshot.cycle}` : `cycle ${snapshot.cycle}`}
+              {selectedCell ? `S${selectedCell.seqId} cycle ${snapshot.cycle}` : `cycle ${snapshot.cycle}`}
             </span>
           )}
           <button

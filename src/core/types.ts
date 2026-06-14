@@ -337,5 +337,6 @@ export interface ProgramDocument {
 
 export interface SelectedCell {
   cycle: number;
+  seqId: number;
   instructionId: number;
 }

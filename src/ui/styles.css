@@ -652,7 +652,7 @@ input {
 
 .timeline-row {
   display: grid;
-  grid-template-columns: 112px repeat(var(--cycles, 301), 72px);
+  grid-template-columns: 148px repeat(var(--cycles, 301), 72px);
   grid-auto-columns: 72px;
 }
 
@@ -710,6 +710,11 @@ input {
     monospace;
   overflow: hidden;
   white-space: nowrap;
+}
+
+.seq-number {
+  color: var(--accent-strong);
+  font-weight: 700;
 }
 
 .line-number {

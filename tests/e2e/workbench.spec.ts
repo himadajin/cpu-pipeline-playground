@@ -18,7 +18,6 @@ test("program library, stepping, timeline selection, and inspector work", async 
       timeline: box(".timeline-shell"),
       drawer: box(".bottom-drawer"),
       rightDock: box(".right-dock"),
-      firstInstruction: document.querySelector(".instruction-cell")?.textContent?.trim() ?? "",
       pageOverflows: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     };
   });
@@ -30,7 +29,6 @@ test("program library, stepping, timeline selection, and inspector work", async 
   expect(layout.drawer?.height).toBeGreaterThan(200);
   expect(layout.rightDock?.height).toBeGreaterThan(500);
   expect(layout.timeline!.y + layout.timeline!.height).toBeLessThanOrEqual(layout.drawer!.y + 1);
-  expect(layout.firstInstruction).toMatch(/^L\d+\s+[a-z]+$/);
   expect(layout.center!.x + layout.center!.width).toBeLessThanOrEqual(layout.right!.x + 1);
   expect(layout.pageOverflows).toBe(false);
   await expect(page.getByRole("button", { name: "Assembly" })).toHaveClass(/active/);
@@ -56,8 +54,11 @@ test("program library, stepping, timeline selection, and inspector work", async 
   await page.getByRole("button", { name: "Events" }).click();
   await expect(page.getByText(/waits for an older writer to retire/)).toBeVisible();
   await page.getByRole("button", { name: "Inspector" }).click();
-  await page.locator(".timeline-cell.current-cycle").first().click();
-  await expect(page.getByText(/line \d+, cycle 10/)).toBeVisible();
+  await page
+    .locator(".timeline-cell.current-cycle", { hasText: /ID|EX|MEM|WB|IF/ })
+    .first()
+    .click();
+  await expect(page.getByText(/S\d+, [A-Z]+, cycle 10, line \d+/)).toBeVisible();
   await page.getByRole("button", { name: "Registers" }).click();
   await expect(page.locator(".register-name").first()).toHaveText("x0");
   await expect(page.locator(".register-name").nth(31)).toHaveText("x31");

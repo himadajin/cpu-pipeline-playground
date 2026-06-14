@@ -486,6 +486,7 @@ function runMemory(
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "load",
@@ -513,6 +514,7 @@ function runMemory(
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "load",
@@ -535,6 +537,7 @@ function runMemory(
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "load",
@@ -554,6 +557,7 @@ function runMemory(
       events.push({
         id: eventId(cycle, "memory", slot.instructionId),
         cycle,
+        seqId: slot.seqId,
         instructionId: slot.instructionId,
         kind: "memory",
         label: "uart",
@@ -573,6 +577,7 @@ function runMemory(
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "store",
@@ -611,6 +616,7 @@ function runMemory(
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "store",
@@ -646,6 +652,7 @@ function runMemory(
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "store",
@@ -892,7 +899,7 @@ function buildTimeline(cycle: number, stages: StageSlots, events: PipelineEvent[
       pc: slot.pc,
       instructionId: slot.instructionId,
       stage,
-      events: events.filter((event) => event.instructionId === slot.instructionId),
+      events: events.filter((event) => event.seqId === slot.seqId),
     });
   });
   for (const event of events) {
@@ -1011,6 +1018,7 @@ function deviceStoreEvent(
   return {
     id: eventId(cycle, "memory", slot.instructionId),
     cycle,
+    seqId: slot.seqId,
     instructionId: slot.instructionId,
     kind: "memory",
     label: device,
@@ -1068,6 +1076,7 @@ function errorEvent(
   return {
     id: eventId(cycle, "error", slot.instructionId),
     cycle,
+    seqId: slot.seqId,
     instructionId: slot.instructionId,
     kind: "error",
     label: "error",
