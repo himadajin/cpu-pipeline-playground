@@ -6,9 +6,10 @@ CPU Pipeline Playground is a TypeScript + Vite + React workbench for writing sho
 
 ## Source Of Truth
 
-- CPU semantics, ISA behavior, pipeline timing, memory, MMIO, errors, halt behavior, and verification contracts are defined in `docs/rask-spec.md`.
+- CPU semantics, ISA behavior, pipeline timing, memory, MMIO, errors, exit / error / pause behavior, and verification contracts are defined in `docs/rask-spec.md`.
 - Product scope and UX direction are defined in `docs/design.md`.
 - Implementation sequencing for moving the current code toward `docs/rask-spec.md` is defined in `docs/rv32i-roadmap.md`.
+- Terms whose interpretation can affect specifications or implementation are defined in `docs/glossary.md`.
 - If code and documentation disagree, treat `docs/rask-spec.md` as authoritative for CPU behavior and update the code toward the spec. Do not preserve old behavior merely because it is currently implemented.
 
 ## Engineering Principles
@@ -21,7 +22,7 @@ When adding behavior, first try to derive it from the existing rules and source-
 2. Refine or generalize an existing rule so it explains the new behavior.
 3. Add a new rule only when the behavior cannot be expressed cleanly by the existing rules.
 
-Keep rules close to their source of truth. CPU semantics belong in `docs/rask-spec.md`; product and UX direction belong in `docs/design.md`; implementation sequencing belongs in `docs/rv32i-roadmap.md`. Do not duplicate detailed specs in `AGENTS.md`.
+Keep rules close to their source of truth. CPU semantics belong in `docs/rask-spec.md`; product and UX direction belong in `docs/design.md`; implementation sequencing belongs in `docs/rv32i-roadmap.md`; terminology belongs in `docs/glossary.md`. Do not duplicate detailed specs or term definitions in `AGENTS.md`.
 
 ## Working Boundaries
 
