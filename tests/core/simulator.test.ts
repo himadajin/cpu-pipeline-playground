@@ -95,6 +95,39 @@ sw x4, 4(x1)
     expect(simulation.current.memory[DATA_ADDRESS + 4]).toBe(43);
   });
 
+  it("projects explicit pipeline latches to stages while keeping bubbles distinct from real nop", () => {
+    const simulation = stepSimulation(createSimulation(assembled("nop\naddi x1, x0, 1\n")));
+
+    expect(simulation.current.latches.fetch?.instruction.text).toBe("nop");
+    expect(simulation.current.stages.IF?.instruction.text).toBe("nop");
+    expect(simulation.current.stages.ID).toBeNull();
+    expect(simulation.current.latches.ifId).toBeNull();
+    expect(simulation.current.latches.fetch?.instruction).toMatchObject({ op: "addi", rd: 0, rs1: 0, imm: 0 });
+  });
+
+  it("assigns seqId at fetch and does not reuse ids after a flush", () => {
+    const simulation = runSimulation(
+      createSimulation(
+        assembled(`
+jal x0, target
+addi x1, x0, 1
+target:
+addi x2, x0, 2
+`),
+      ),
+    );
+    const slots = simulation.history
+      .flatMap((snapshot) => Object.values(snapshot.stages))
+      .filter((slot) => slot != null);
+    const seenBySeqId = new Map(slots.map((slot) => [slot.seqId, slot.instruction.text]));
+
+    expect(Array.from(seenBySeqId.keys())).toEqual([0, 1, 2, 3]);
+    expect(seenBySeqId.get(1)).toBe("addi x1, x0, 1");
+    expect(seenBySeqId.get(2)).toBe("addi x2, x0, 2");
+    expect(seenBySeqId.get(3)).toBe("addi x2, x0, 2");
+    expect(simulation.current.nextSeqId).toBe(4);
+  });
+
   it("flushes younger instructions after a taken branch", () => {
     const program = assembled(`
 addi x1, x0, 1

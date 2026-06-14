@@ -11,6 +11,7 @@ import type {
   InstructionWord,
   Int32,
   MemoryDiff,
+  PipelineLatches,
   PipelineEvent,
   RegisterDiff,
   RegisterFile,
@@ -56,7 +57,9 @@ export function createSimulation(
   const current: CycleSnapshot = {
     cycle: 0,
     pc: executionImage.baseAddress,
-    stages: emptyStages(),
+    nextSeqId: 0,
+    latches: emptyLatches(),
+    stages: projectStages(emptyLatches()),
     registers,
     memory: normalizeInitialMemory(initialState.memory ?? {}),
     consoleOutput: [],
@@ -99,13 +102,13 @@ export function stepSimulation(state: SimulationState): SimulationState {
   const events: PipelineEvent[] = [];
   const registerDiffs: RegisterDiff[] = [];
   const memoryDiffs: MemoryDiff[] = [];
-  const slots = cloneStages(previous.stages);
+  const latches = cloneLatches(previous.latches);
+  const slots = projectStages(latches);
 
   commitWriteback(cycle, slots.WB, registers, registerDiffs, events);
   const memOutput = runMemory(cycle, slots.MEM, memory, consoleOutput, memoryDiffs, events);
   const wbOutput = writebackValue(slots.WB);
-  peerStages = slots;
-  const exOutput = runExecute(cycle, slots.EX, registers, memOutput, wbOutput, events);
+  const exOutput = runExecute(cycle, slots.EX, registers, slots, memOutput, wbOutput, events);
   const decodeOutput = runDecode(cycle, slots.ID, events);
 
   const stall = !decodeOutput?.halted && shouldStallForLoadUse(slots.ID, slots.EX);
@@ -145,32 +148,39 @@ export function stepSimulation(state: SimulationState): SimulationState {
     }
   }
 
-  const nextStages: StageSlots = {
-    WB: memOutput ? { ...slots.MEM!, ...memOutput } : slots.MEM,
-    MEM: exOutput ? { ...slots.EX!, ...exOutput } : slots.EX,
-    EX: flush || stall || decodeOutput?.halted ? null : slots.ID,
-    ID: flush ? null : stall ? slots.ID : slots.IF,
-    IF: stall ? slots.IF : null,
+  const nextLatches: PipelineLatches = {
+    memWb: memOutput ? { ...slots.MEM!, ...memOutput } : slots.MEM,
+    exMem: exOutput ? { ...slots.EX!, ...exOutput } : slots.EX,
+    idEx: flush || stall || decodeOutput?.halted ? null : slots.ID,
+    ifId: flush ? null : stall ? slots.ID : slots.IF,
+    fetch: stall ? slots.IF : null,
   };
+  const nextStages = projectStages(nextLatches);
+
+  let nextSeqId = previous.nextSeqId;
 
   let pc = previous.pc;
   if (flush) {
     pc = exOutput?.nextPc ?? previous.pc;
   } else if (!stall && !memOutput?.halted) {
-    const fetched = fetchInstruction(state.executionImage, previous.pc);
-    nextStages.IF = fetched;
+    const fetched = fetchInstruction(state.executionImage, previous.pc, nextSeqId);
+    nextLatches.fetch = fetched;
+    if (fetched) nextSeqId += 1;
     pc = fetched && !fetched.halted ? toByteAddress(previous.pc + INSTRUCTION_SIZE_BYTES) : previous.pc;
   }
 
   if (registers[0] !== 0) registers[0] = toInt32(0);
-  const timeline = buildTimeline(cycle, nextStages, events);
+  const projectedStages = projectStages(nextLatches);
+  const timeline = buildTimeline(cycle, projectedStages, events);
   const halted =
-    Boolean(exOutput?.halted || memOutput?.halted || decodeOutput?.halted || nextStages.IF?.halted) ||
-    (isOutsideInstructionImage(state.executionImage, pc) && STAGES.every((stage) => nextStages[stage] === null));
+    Boolean(exOutput?.halted || memOutput?.halted || decodeOutput?.halted || projectedStages.IF?.halted) ||
+    (isOutsideInstructionImage(state.executionImage, pc) && STAGES.every((stage) => projectedStages[stage] === null));
   const current: CycleSnapshot = {
     cycle,
     pc,
-    stages: nextStages,
+    nextSeqId,
+    latches: nextLatches,
+    stages: projectedStages,
     registers,
     memory,
     consoleOutput,
@@ -188,13 +198,38 @@ function emptyStages(): StageSlots {
   return { IF: null, ID: null, EX: null, MEM: null, WB: null };
 }
 
-function cloneStages(stages: StageSlots): StageSlots {
-  return Object.fromEntries(STAGES.map((stage) => [stage, stages[stage] ? { ...stages[stage]! } : null])) as StageSlots;
+function emptyLatches(): PipelineLatches {
+  return { fetch: null, ifId: null, idEx: null, exMem: null, memWb: null };
 }
 
-function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress): StageSlot | null {
+function cloneLatches(latches: PipelineLatches): PipelineLatches {
+  return {
+    fetch: cloneSlot(latches.fetch),
+    ifId: cloneSlot(latches.ifId),
+    idEx: cloneSlot(latches.idEx),
+    exMem: cloneSlot(latches.exMem),
+    memWb: cloneSlot(latches.memWb),
+  };
+}
+
+function cloneSlot(slot: StageSlot | null): StageSlot | null {
+  return slot ? { ...slot } : null;
+}
+
+function projectStages(latches: PipelineLatches): StageSlots {
+  return {
+    IF: latches.fetch,
+    ID: latches.ifId,
+    EX: latches.idEx,
+    MEM: latches.exMem,
+    WB: latches.memWb,
+  };
+}
+
+function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress, seqId: number): StageSlot | null {
   if (pc % INSTRUCTION_SIZE_BYTES !== 0) {
     return {
+      seqId,
       instructionId: -1,
       pc,
       instructionWord: toInstructionWord(0),
@@ -214,9 +249,10 @@ function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress): Stag
   if (!fetched) return null;
   const decoded = decodeInstruction(fetched.word, pc, fetched.id, fetched.source, fetched.instruction?.text);
   if (decoded.ok) {
-    return { instructionId: fetched.id, pc, instructionWord: fetched.word, instruction: decoded.instruction };
+    return { seqId, instructionId: fetched.id, pc, instructionWord: fetched.word, instruction: decoded.instruction };
   }
   return {
+    seqId,
     instructionId: fetched.id,
     pc,
     instructionWord: fetched.word,
@@ -464,12 +500,14 @@ function runExecute(
   cycle: number,
   slot: StageSlot | null,
   registers: RegisterFile,
+  peerStages: StageSlots,
   memOutput: Partial<StageSlot> | null,
   wbOutput: Int32 | null,
   events: PipelineEvent[],
 ): Partial<StageSlot> | null {
   if (!slot) return null;
-  const read = (register: RegisterIndex) => readRegister(cycle, slot, register, registers, memOutput, wbOutput, events);
+  const read = (register: RegisterIndex) =>
+    readRegister(cycle, slot, register, registers, peerStages, memOutput, wbOutput, events);
 
   switch (slot.instruction.op) {
     case "add": {
@@ -654,12 +692,13 @@ function readRegister(
   consumer: StageSlot,
   register: RegisterIndex,
   registers: RegisterFile,
+  peerStages: StageSlots,
   memOutput: Partial<StageSlot> | null,
   wbOutput: Int32 | null,
   events: PipelineEvent[],
 ): Int32 {
   if (register === 0) return toInt32(0);
-  const memSlot = consumerStagePeer(consumer, "MEM");
+  const memSlot = peerStages.MEM;
   if (destinationRegister(memSlot?.instruction) === register) {
     const value = memOutput?.loadedValue ?? memSlot?.result;
     if (value != null) {
@@ -667,18 +706,12 @@ function readRegister(
       return value;
     }
   }
-  const wbSlot = consumerStagePeer(consumer, "WB");
+  const wbSlot = peerStages.WB;
   if (destinationRegister(wbSlot?.instruction) === register && wbOutput != null) {
     events.push(forwardEvent(cycle, consumer, register, "WB", wbOutput));
     return wbOutput;
   }
   return registers[register] ?? toInt32(0);
-}
-
-let peerStages: StageSlots = emptyStages();
-
-function consumerStagePeer(_consumer: StageSlot, stage: StageName): StageSlot | null {
-  return peerStages[stage];
 }
 
 function shouldStallForLoadUse(id: StageSlot | null, ex: StageSlot | null): boolean {

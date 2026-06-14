@@ -224,6 +224,7 @@ export interface DecodeError {
 }
 
 export interface StageSlot {
+  seqId: number;
   instructionId: number;
   pc: ByteAddress;
   instructionWord: InstructionWord;
@@ -242,6 +243,14 @@ export interface StageSlot {
 
 export type StageSlots = Record<StageName, StageSlot | null>;
 
+export interface PipelineLatches {
+  fetch: StageSlot | null;
+  ifId: StageSlot | null;
+  idEx: StageSlot | null;
+  exMem: StageSlot | null;
+  memWb: StageSlot | null;
+}
+
 export interface TimelineCell {
   cycle: number;
   instructionId: number;
@@ -252,6 +261,8 @@ export interface TimelineCell {
 export interface CycleSnapshot {
   cycle: number;
   pc: ByteAddress;
+  nextSeqId: number;
+  latches: PipelineLatches;
   stages: StageSlots;
   registers: RegisterFile;
   memory: ByteMemory;
