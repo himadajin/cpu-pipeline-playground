@@ -4,6 +4,8 @@
 
 `rask` は、RV32I を実行する単一ハート・インオーダー・シングルイシューの 5 段 pipeline CPU である。この文書は、RV32I 命令の機能的意味論を再定義せず、`rask` における pipeline、address space、MMIO、exit / error / pause、verification contract を定義する。実装・可視化・テストはこの文書から導出され、この文書と実装が食い違う場合は文書側を正とする。文書が誤っている場合は、文書を先に直す。
 
+用語の解釈に迷う場合は `docs/glossary.md` を参照する。ただし CPU 動作、timing、format grammar、MMIO address などの詳細仕様はこの文書を正とする。
+
 ## 1. 概要
 
 `rask` は、RV32I を実行する単一ハート・インオーダー・シングルイシューの 5 段 pipeline IF / ID / EX / MEM / WB を持ち、cycle 単位で state transition が決定的に定まる。同一の program と初期 state に対して、全 cycle の全 state は一意に定まる。

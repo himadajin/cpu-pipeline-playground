@@ -4,7 +4,7 @@
 
 CPU Pipeline Playground は、RV32I CPU `rask` の 5 段 in-order pipeline を観察するための密度の高いワークベンチである。この文書は、現行の assembler / simulator / UI / tests / oracle を `docs/rask-spec.md` に定義された仕様へ移行するためのロードマップを定義する。
 
-CPU、ISA、pipeline、address space、MMIO、exit / error / pause、verification contract の source of truth は `docs/rask-spec.md` とする。この文書は仕様詳細を重複して定義しない。実装判断で迷う場合は `docs/rask-spec.md` を優先し、この文書は実装順序と作業単位だけを扱う。
+CPU、ISA、pipeline、address space、MMIO、exit / error / pause、verification contract の source of truth は `docs/rask-spec.md` とする。用語の解釈に迷う場合は `docs/glossary.md` を参照する。この文書は仕様詳細や用語定義を重複して定義しない。実装判断で迷う場合は `docs/rask-spec.md` を優先し、この文書は実装順序と作業単位だけを扱う。
 
 ここでの RV32I 対応は、`rask` 仕様が定める RV32I CPU としての機能・タイミング・検証契約に実装を揃えることを指す。
 
@@ -105,4 +105,5 @@ UI を `rask` の挙動に合わせる。
 ## Reference
 
 - [rask CPU 仕様書](./rask-spec.md)
+- [Glossary](./glossary.md)
 - [RISC-V Unprivileged ISA, RV32I Base Integer Instruction Set](https://docs.riscv.org/reference/isa/v20240411/unpriv/rv32.html)
