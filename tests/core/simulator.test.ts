@@ -10,6 +10,25 @@ function assembled(source: string) {
   return result.instructions;
 }
 
+function eventCount(simulation: ReturnType<typeof runSimulation>, kind: "stall" | "flush") {
+  return simulation.history.flatMap((snapshot) => snapshot.events).filter((event) => event.kind === kind).length;
+}
+
+function occupancyBySeq(simulation: ReturnType<typeof runSimulation>): Record<number, string> {
+  const maxCycle = simulation.current.cycle;
+  const symbol = { IF: "F", ID: "D", EX: "X", MEM: "M", WB: "W" } as const;
+  const rows: Record<number, string[]> = {};
+  for (const snapshot of simulation.history.slice(1)) {
+    for (const cell of snapshot.timeline) {
+      rows[cell.seqId] ??= Array.from({ length: maxCycle }, () => ".");
+      rows[cell.seqId][cell.cycle - 1] = symbol[cell.stage];
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(rows).map(([seqId, cells]) => [Number(seqId), cells.join("").replace(/\.+$/, "")]),
+  );
+}
+
 describe("simulator", () => {
   it("accepts initial architectural state while keeping x0 hardwired to zero", () => {
     const simulation = createSimulation(assembled("lw x2, 0(x1)\n"), {
@@ -40,15 +59,16 @@ lw x3, 0(x1)
     expect(simulation.current.memory[DATA_ADDRESS + 3]).toBe(0);
   });
 
-  it("records forwarding events for ALU dependencies", () => {
+  it("stalls on ALU dependencies without forwarding", () => {
     const program = assembled(`
 addi x1, x0, 4
 add x2, x1, x1
 `);
     const simulation = runSimulation(createSimulation(program));
-    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "forward")).toBe(
-      true,
-    );
+    expect(eventCount(simulation, "stall")).toBe(3);
+    expect(
+      simulation.history.flatMap((snapshot) => snapshot.events).some((event) => (event.kind as string) === "forward"),
+    ).toBe(false);
     expect(simulation.current.registers[2]).toBe(8);
   });
 
@@ -61,13 +81,11 @@ lw x3, 0(x1)
 add x4, x3, x2
 `);
     const simulation = runSimulation(createSimulation(program));
-    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
-      true,
-    );
+    expect(eventCount(simulation, "stall")).toBeGreaterThanOrEqual(3);
     expect(simulation.current.registers[4]).toBe(10);
   });
 
-  it("forwards ALU results into store data", () => {
+  it("stalls for store data dependencies before writing memory", () => {
     const program = assembled(`
 lui x1, 0x80010
 addi x2, x0, 41
@@ -75,6 +93,7 @@ addi x3, x2, 1
 sw x3, 0(x1)
 `);
     const simulation = runSimulation(createSimulation(program));
+    expect(eventCount(simulation, "stall")).toBeGreaterThanOrEqual(3);
     expect(simulation.current.memory[DATA_ADDRESS]).toBe(42);
     expect(simulation.current.memory[DATA_ADDRESS + 1]).toBe(0);
     expect(simulation.current.memory[DATA_ADDRESS + 2]).toBe(0);
@@ -93,6 +112,25 @@ sw x4, 4(x1)
     const simulation = runSimulation(createSimulation(program));
     expect(simulation.current.registers[4]).toBe(43);
     expect(simulation.current.memory[DATA_ADDRESS + 4]).toBe(43);
+  });
+
+  it("stalls branches until compared source registers retire", () => {
+    const simulation = runSimulation(
+      createSimulation(
+        assembled(`
+addi x1, x0, 1
+beq x1, x1, target
+addi x2, x0, 99
+target:
+addi x3, x0, 7
+`),
+      ),
+    );
+
+    expect(eventCount(simulation, "stall")).toBe(3);
+    expect(eventCount(simulation, "flush")).toBeGreaterThan(0);
+    expect(simulation.current.registers[2]).toBe(0);
+    expect(simulation.current.registers[3]).toBe(7);
   });
 
   it("projects explicit pipeline latches to stages while keeping bubbles distinct from real nop", () => {
@@ -126,6 +164,57 @@ addi x2, x0, 2
     expect(seenBySeqId.get(2)).toBe("addi x2, x0, 2");
     expect(seenBySeqId.get(3)).toBe("addi x2, x0, 2");
     expect(simulation.current.nextSeqId).toBe(4);
+  });
+
+  it("matches the representative hazard occupancy golden", () => {
+    const simulation = runSimulation(
+      createSimulation(
+        assembled(`
+addi x5, x0, 3
+add x6, x5, x5
+beq x6, x6, target
+addi x7, x0, 1
+target:
+addi x8, x0, 2
+`),
+      ),
+    );
+
+    expect(occupancyBySeq(simulation)).toMatchObject({
+      0: "FDXMW",
+      1: ".FDDDDXMW",
+      2: "..FFFFDDDDXMW",
+      3: "......FFFFDD",
+    });
+  });
+
+  it("lets redirect win when a younger stalled instruction would otherwise hold fetch", () => {
+    const simulation = runSimulation(
+      createSimulation(
+        assembled(`
+addi x1, x0, 1
+add x2, x1, x1
+beq x0, x0, target
+add x3, x2, x2
+target:
+addi x4, x0, 4
+`),
+      ),
+    );
+    const branchCycles = new Set(
+      simulation.history
+        .flatMap((snapshot) => snapshot.events)
+        .filter((event) => event.kind === "branch")
+        .map((event) => event.cycle),
+    );
+    const competingStalls = simulation.history
+      .flatMap((snapshot) => snapshot.events)
+      .filter((event) => event.kind === "stall" && branchCycles.has(event.cycle));
+
+    expect(branchCycles.size).toBeGreaterThan(0);
+    expect(competingStalls).toEqual([]);
+    expect(simulation.current.registers[3]).toBe(0);
+    expect(simulation.current.registers[4]).toBe(4);
   });
 
   it("flushes younger instructions after a taken branch", () => {
@@ -263,7 +352,6 @@ addi x6, x0, 1
 
   it("does not treat jal as a load-use source register consumer", () => {
     const program = assembled(`
-lui x1, 0x80010
 lw x2, 0(x1)
 jal x3, done
 done:
@@ -271,6 +359,7 @@ addi x4, x0, 1
 `);
     const simulation = runSimulation(
       createSimulation(program, {
+        registers: { 1: DATA_ADDRESS },
         memory: { [DATA_ADDRESS]: 1, [DATA_ADDRESS + 1]: 0, [DATA_ADDRESS + 2]: 0, [DATA_ADDRESS + 3]: 0 },
       }),
     );
@@ -278,7 +367,7 @@ addi x4, x0, 1
     expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
       false,
     );
-    expect(simulation.current.registers[3]).toBe(RESET_LINK + 12);
+    expect(simulation.current.registers[3]).toBe(RESET_LINK + 8);
   });
 
   it("wraps ALU results to 32 bits", () => {

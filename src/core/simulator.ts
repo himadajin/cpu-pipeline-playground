@@ -108,26 +108,28 @@ export function stepSimulation(state: SimulationState): SimulationState {
   commitWriteback(cycle, slots.WB, registers, registerDiffs, events);
   const memOutput = runMemory(cycle, slots.MEM, memory, consoleOutput, memoryDiffs, events);
   const wbOutput = writebackValue(slots.WB);
-  const exOutput = runExecute(cycle, slots.EX, registers, slots, memOutput, wbOutput, events);
+  const exOutput = runExecute(cycle, slots.EX, registers, events);
   const decodeOutput = runDecode(cycle, slots.ID, events);
 
-  const stall = !decodeOutput?.halted && shouldStallForLoadUse(slots.ID, slots.EX);
+  const flush = Boolean(exOutput?.taken);
+  const stall = !flush && !decodeOutput?.halted && shouldStallForDataHazard(slots.ID, [slots.EX, slots.MEM, slots.WB]);
   if (stall && slots.ID) {
     events.push({
       id: eventId(cycle, "stall", slots.ID.instructionId),
       cycle,
+      seqId: slots.ID.seqId,
       instructionId: slots.ID.instructionId,
       kind: "stall",
       label: "stall",
-      message: `${slots.ID.instruction.text} waits because ${slots.EX?.instruction.text} is loading a source register.`,
+      message: `${slots.ID.instruction.text} waits for an older writer to retire.`,
     });
   }
 
-  const flush = Boolean(exOutput?.taken);
   if (flush && slots.EX) {
     events.push({
       id: eventId(cycle, "branch", slots.EX.instructionId),
       cycle,
+      seqId: slots.EX.seqId,
       instructionId: slots.EX.instructionId,
       kind: "branch",
       label: "branch",
@@ -139,6 +141,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
         events.push({
           id: eventId(cycle, "flush", flushed.instructionId),
           cycle,
+          seqId: flushed.seqId,
           instructionId: flushed.instructionId,
           kind: "flush",
           label: "flush",
@@ -153,7 +156,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
     exMem: exOutput ? { ...slots.EX!, ...exOutput } : slots.EX,
     idEx: flush || stall || decodeOutput?.halted ? null : slots.ID,
     ifId: flush ? null : stall ? slots.ID : slots.IF,
-    fetch: stall ? slots.IF : null,
+    fetch: flush ? null : stall ? slots.IF : null,
   };
   const nextStages = projectStages(nextLatches);
 
@@ -500,14 +503,10 @@ function runExecute(
   cycle: number,
   slot: StageSlot | null,
   registers: RegisterFile,
-  peerStages: StageSlots,
-  memOutput: Partial<StageSlot> | null,
-  wbOutput: Int32 | null,
   events: PipelineEvent[],
 ): Partial<StageSlot> | null {
   if (!slot) return null;
-  const read = (register: RegisterIndex) =>
-    readRegister(cycle, slot, register, registers, peerStages, memOutput, wbOutput, events);
+  const read = (register: RegisterIndex) => readRegister(register, registers);
 
   switch (slot.instruction.op) {
     case "add": {
@@ -687,37 +686,19 @@ function runExecute(
   }
 }
 
-function readRegister(
-  cycle: number,
-  consumer: StageSlot,
-  register: RegisterIndex,
-  registers: RegisterFile,
-  peerStages: StageSlots,
-  memOutput: Partial<StageSlot> | null,
-  wbOutput: Int32 | null,
-  events: PipelineEvent[],
-): Int32 {
+function readRegister(register: RegisterIndex, registers: RegisterFile): Int32 {
   if (register === 0) return toInt32(0);
-  const memSlot = peerStages.MEM;
-  if (destinationRegister(memSlot?.instruction) === register) {
-    const value = memOutput?.loadedValue ?? memSlot?.result;
-    if (value != null) {
-      events.push(forwardEvent(cycle, consumer, register, "MEM", value));
-      return value;
-    }
-  }
-  const wbSlot = peerStages.WB;
-  if (destinationRegister(wbSlot?.instruction) === register && wbOutput != null) {
-    events.push(forwardEvent(cycle, consumer, register, "WB", wbOutput));
-    return wbOutput;
-  }
   return registers[register] ?? toInt32(0);
 }
 
-function shouldStallForLoadUse(id: StageSlot | null, ex: StageSlot | null): boolean {
-  if (!id || !ex || !isLoadInstruction(ex.instruction)) return false;
-  const rd = destinationRegister(ex.instruction);
-  return rd != null && sourceRegisters(id.instruction).includes(rd);
+function shouldStallForDataHazard(id: StageSlot | null, writers: Array<StageSlot | null>): boolean {
+  if (!id) return false;
+  const sources = sourceRegisters(id.instruction);
+  if (sources.length === 0) return false;
+  return writers.some((writer) => {
+    const rd = destinationRegister(writer?.instruction);
+    return rd != null && rd !== 0 && sources.includes(rd);
+  });
 }
 
 function writebackValue(slot: StageSlot | null): Int32 | null {
@@ -746,36 +727,20 @@ function buildTimeline(cycle: number, stages: StageSlots, events: PipelineEvent[
     if (!slot) return;
     cells.push({
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       stage,
       events: events.filter((event) => event.instructionId === slot.instructionId),
     });
   });
   for (const event of events) {
-    if (event.instructionId == null) continue;
-    if (!cells.some((cell) => cell.instructionId === event.instructionId && cell.cycle === cycle)) {
-      cells.push({ cycle, instructionId: event.instructionId, stage: "ID", events: [event] });
+    if (event.kind !== "flush" || event.instructionId == null) continue;
+    const seqId = event.seqId ?? event.instructionId;
+    if (!cells.some((cell) => cell.seqId === seqId && cell.cycle === cycle)) {
+      cells.push({ cycle, seqId, instructionId: event.instructionId, stage: "ID", events: [event] });
     }
   }
   return cells;
-}
-
-function forwardEvent(
-  cycle: number,
-  consumer: StageSlot,
-  register: RegisterIndex,
-  from: StageName,
-  value: Int32,
-): PipelineEvent {
-  return {
-    id: eventId(cycle, `forward-${from}-x${register}`, consumer.instructionId),
-    cycle,
-    instructionId: consumer.instructionId,
-    kind: "forward",
-    label: "fwd",
-    message: `${consumer.instruction.text} receives x${register}=${value} from ${from}.`,
-    detail: { register: `x${register}`, from, value },
-  };
 }
 
 function eventId(cycle: number, label: string, instructionId?: number): string {

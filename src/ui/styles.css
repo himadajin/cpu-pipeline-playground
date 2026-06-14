@@ -797,13 +797,6 @@ input {
   background: var(--accent);
 }
 
-.event-marker.forward {
-  width: 9px;
-  height: 5px;
-  border-color: var(--accent-border);
-  border-radius: 999px;
-}
-
 .event-marker.stall {
   border-style: dashed;
 }
@@ -876,10 +869,6 @@ input {
 .event-detail.flush {
   text-decoration: line-through;
   text-decoration-thickness: 1px;
-}
-
-.event-detail.forward {
-  font-style: italic;
 }
 
 .diff-row {

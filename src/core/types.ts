@@ -63,7 +63,7 @@ export type Opcode =
   | "ebreak";
 
 export type StageName = "IF" | "ID" | "EX" | "MEM" | "WB";
-export type EventKind = "stall" | "flush" | "forward" | "commit" | "memory" | "branch" | "error";
+export type EventKind = "stall" | "flush" | "commit" | "memory" | "branch" | "error";
 
 export interface SourceLine {
   line: number;
@@ -192,6 +192,7 @@ export interface ExecutionImage {
 export interface PipelineEvent {
   id: string;
   cycle: number;
+  seqId?: number;
   instructionId?: number;
   kind: EventKind;
   label: string;
@@ -253,6 +254,7 @@ export interface PipelineLatches {
 
 export interface TimelineCell {
   cycle: number;
+  seqId: number;
   instructionId: number;
   stage: StageName;
   events: PipelineEvent[];

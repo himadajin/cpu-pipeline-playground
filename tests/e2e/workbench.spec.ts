@@ -37,7 +37,7 @@ test("program library, stepping, timeline selection, and inspector work", async 
   await expect(page.getByRole("button", { name: "Inspector" })).toHaveClass(/active/);
 
   await page.getByRole("button", { name: "Reset" }).click();
-  for (let index = 0; index < 5; index += 1) {
+  for (let index = 0; index < 9; index += 1) {
     await page.getByRole("button", { name: "Step" }).click();
   }
   const rowHeightBeforeEvents = await page
@@ -54,10 +54,10 @@ test("program library, stepping, timeline selection, and inspector work", async 
   await expect(page.locator(".event-badge")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Events" }).click();
-  await expect(page.getByText(/writes x1/)).toBeVisible();
+  await expect(page.getByText(/waits for an older writer to retire/)).toBeVisible();
   await page.getByRole("button", { name: "Inspector" }).click();
   await page.locator(".timeline-cell.current-cycle").first().click();
-  await expect(page.getByText(/line \d+, cycle 6/)).toBeVisible();
+  await expect(page.getByText(/line \d+, cycle 10/)).toBeVisible();
   await page.getByRole("button", { name: "Registers" }).click();
   await expect(page.locator(".register-name").first()).toHaveText("x0");
   await expect(page.locator(".register-name").nth(31)).toHaveText("x31");

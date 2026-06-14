@@ -52,7 +52,7 @@ describe("App", () => {
   it("keeps timeline events as markers and moves event logs to the Events tab", async () => {
     const { container } = render(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
-    for (let index = 0; index < 6; index += 1) {
+    for (let index = 0; index < 10; index += 1) {
       await userEvent.click(screen.getByRole("button", { name: "Step" }));
     }
 
@@ -61,7 +61,7 @@ describe("App", () => {
     expect(screen.queryByText(/commit:/)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Events" }));
-    expect(screen.getByText(/writes x1/)).toBeInTheDocument();
+    expect(screen.getByText(/waits for an older writer to retire/)).toBeInTheDocument();
   });
 
   it("shows registers in fixed order and only highlights changed registers", async () => {
@@ -96,7 +96,7 @@ describe("App", () => {
     );
     const { container } = render(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
-    for (let index = 0; index < 7; index += 1) {
+    for (let index = 0; index < 10; index += 1) {
       await userEvent.click(screen.getByRole("button", { name: "Step" }));
     }
     await userEvent.click(screen.getByRole("button", { name: "Memory" }));

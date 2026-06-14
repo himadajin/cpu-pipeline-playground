@@ -126,7 +126,7 @@ function InspectorPanel({
           />
         </div>
       ) : (
-        <p className="muted">Select a timeline cell to inspect hazards, forwarding, flushes, and diffs.</p>
+        <p className="muted">Select a timeline cell to inspect stalls, flushes, commits, and diffs.</p>
       )}
     </section>
   );
