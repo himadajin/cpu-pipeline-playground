@@ -24,6 +24,7 @@ import type {
   RTypeOpcode,
   ShiftImmediateOpcode,
   STypeOpcode,
+  SystemOpcode,
   UTypeOpcode,
 } from "./types";
 
@@ -91,6 +92,12 @@ export function encodeInstruction(instruction: Instruction, pc: ByteAddress): In
     case "lui":
     case "auipc":
       return encodeU(instruction.imm, instruction.rd, encoding.opcode);
+    case "fence":
+      return toInstructionWord(0x0ff0000f);
+    case "ecall":
+      return toInstructionWord(0x00000073);
+    case "ebreak":
+      return toInstructionWord(0x00100073);
   }
 }
 
@@ -105,6 +112,9 @@ export function decodeInstruction(
   if (raw === 0x00000073) {
     return { ok: false, error: { kind: "ecall", message: "ecall is an error condition in rask." } };
   }
+  if (raw === 0x00100073) {
+    return { ok: true, instruction: { ...baseInstruction(id, source, text, raw), op: "ebreak" } };
+  }
 
   const opcode = raw & 0x7f;
   const rd = toRegisterIndex((raw >>> 7) & 0x1f);
@@ -112,8 +122,7 @@ export function decodeInstruction(
   const rs1 = toRegisterIndex((raw >>> 15) & 0x1f);
   const rs2 = toRegisterIndex((raw >>> 20) & 0x1f);
   const funct7 = (raw >>> 25) & 0x7f;
-  const displayText = text ?? formatDecodedText(raw);
-  const base = { id, source, text: displayText };
+  const base = baseInstruction(id, source, text, raw);
 
   const rOpcode = findOpcode("R", opcode, funct3, funct7);
   if (rOpcode) return { ok: true, instruction: { ...base, op: rOpcode, rd, rs1, rs2 } };
@@ -165,6 +174,11 @@ export function decodeInstruction(
     return { ok: true, instruction: { ...base, op: uOpcode, rd, imm: toUpper20Immediate(raw >>> 12) } };
   }
 
+  const systemOpcode = findOpcode("SYSTEM", opcode, funct3);
+  if (systemOpcode === "fence") {
+    return { ok: true, instruction: { ...base, op: systemOpcode } };
+  }
+
   return {
     ok: false,
     error: { kind: "undef-instr", message: `Undefined instruction word ${formatWord(raw)} at byte address ${pc}.` },
@@ -182,8 +196,9 @@ function findOpcode(format: "S", opcode: number, funct3: number): STypeOpcode | 
 function findOpcode(format: "B", opcode: number, funct3: number): BTypeOpcode | null;
 function findOpcode(format: "J", opcode: number): JTypeOpcode | null;
 function findOpcode(format: "U", opcode: number): UTypeOpcode | null;
+function findOpcode(format: "SYSTEM", opcode: number, funct3: number): SystemOpcode | null;
 function findOpcode(
-  format: "R" | "I" | "S" | "B" | "J" | "U",
+  format: "R" | "I" | "S" | "B" | "J" | "U" | "SYSTEM",
   opcode: number,
   funct3?: number,
   funct7?: number,
@@ -267,6 +282,10 @@ function signExtend(value: number, bits: number): number {
 
 function formatDecodedText(word: number): string {
   return `.word ${formatWord(word)}`;
+}
+
+function baseInstruction(id: number, source: SourceLine, text: string | undefined, word: number) {
+  return { id, source, text: text ?? formatDecodedText(word) };
 }
 
 function formatAddress(address: number): string {

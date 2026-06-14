@@ -639,6 +639,13 @@ function runExecute(
       return { result: toInt32(slot.instruction.imm << 12) };
     case "auipc":
       return { result: toInt32(slot.pc + (slot.instruction.imm << 12)) };
+    case "fence":
+      return {};
+    case "ecall":
+      events.push(errorEvent(cycle, slot, "ecall is an error condition in rask.", { errorKind: "ecall" }));
+      return { halted: true };
+    case "ebreak":
+      return { isEbreak: true };
   }
 }
 

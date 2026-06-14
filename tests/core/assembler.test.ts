@@ -165,10 +165,16 @@ nop
     expect(result.errors[0]?.message).toContain("signed 21-bit");
   });
 
-  it("keeps system and ordering instructions out of scope for now", () => {
+  it("accepts RV32I system and ordering instructions as real instructions", () => {
     const result = assemble("ecall\nebreak\nfence\n");
-    expect(result.ok).toBe(false);
-    expect(result.errors).toHaveLength(3);
-    expect(result.errors.every((error) => error.message.startsWith("Unknown instruction"))).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.instructions.map((instruction) => instruction.op)).toEqual(["ecall", "ebreak", "fence"]);
+    expect(result.executionImage.instructions.map((instruction) => instruction.word)).toEqual([
+      0x00000073, 0x00100073, 0x0ff0000f,
+    ]);
+
+    const invalid = assemble("fence rw, rw\necall x1\nebreak x1\n");
+    expect(invalid.ok).toBe(false);
+    expect(invalid.errors.map((error) => error.line)).toEqual([1, 2, 3]);
   });
 });

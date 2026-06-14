@@ -25,6 +25,8 @@ sra x11, x10, x1
 slli x12, x11, 3
 srli x13, x12, 2
 srai x14, x13, 1
+fence
+ebreak
 lui x15, 0x80010
 auipc x16, 1
 sw x2, 0(x15)
@@ -79,7 +81,9 @@ describe("instruction codec", () => {
   });
 
   it("keeps source diagnostics separate from decode-time ecall and undefined-instruction errors", () => {
-    expect(assemble("ecall\n").errors[0]?.message).toContain("Unknown instruction");
+    const assembled = assemble("ecall\n");
+    expect(assembled.errors).toEqual([]);
+    expect(assembled.executionImage.instructions[0]?.word).toBe(0x00000073);
 
     const ecall = decodeInstruction(toInstructionWord(0x00000073), toByteAddress(RASK_RESET_PC), 0);
     expect(ecall).toMatchObject({ ok: false, error: { kind: "ecall" } });

@@ -46,7 +46,7 @@
       "id": "add",
       "file": "add.asm",
       "kind": "alu",
-      "description": "Covers integer arithmetic, logic, and shifts."
+      "description": "Covers integer arithmetic, logic, shifts, and NOP-equivalent fence."
     },
     {
       "id": "load-store",

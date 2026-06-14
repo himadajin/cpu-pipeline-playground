@@ -57,7 +57,10 @@ export type Opcode =
   | "sra"
   | "slli"
   | "srli"
-  | "srai";
+  | "srai"
+  | "fence"
+  | "ecall"
+  | "ebreak";
 
 export type StageName = "IF" | "ID" | "EX" | "MEM" | "WB";
 export type EventKind = "stall" | "flush" | "forward" | "commit" | "memory" | "branch" | "error";
@@ -92,6 +95,7 @@ export type STypeOpcode = "sb" | "sh" | "sw";
 export type BTypeOpcode = "beq" | "bne" | "blt" | "bge" | "bltu" | "bgeu";
 export type JTypeOpcode = "jal";
 export type UTypeOpcode = "lui" | "auipc";
+export type SystemOpcode = "fence" | "ecall" | "ebreak";
 
 export interface RTypeInstruction extends InstructionBase {
   op: RTypeOpcode;
@@ -142,6 +146,10 @@ export interface UTypeInstruction extends InstructionBase {
   imm: Upper20Immediate;
 }
 
+export interface SystemInstruction extends InstructionBase {
+  op: SystemOpcode;
+}
+
 export type Instruction =
   | RTypeInstruction
   | ITypeInstruction
@@ -149,7 +157,8 @@ export type Instruction =
   | STypeInstruction
   | BTypeInstruction
   | JTypeInstruction
-  | UTypeInstruction;
+  | UTypeInstruction
+  | SystemInstruction;
 
 export interface AssembleError {
   line: number;
@@ -227,6 +236,7 @@ export interface StageSlot {
   taken?: boolean;
   nextPc?: ByteAddress;
   exitRequest?: ExitRequest;
+  isEbreak?: boolean;
   halted?: boolean;
 }
 

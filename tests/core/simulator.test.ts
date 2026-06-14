@@ -534,6 +534,33 @@ addi x3, x2, 1
     expect(exit.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([]);
   });
 
+  it("executes fence as a real no-op and identifies ebreak for later pause handling", () => {
+    const simulation = runSimulation(createSimulation(assembled("addi x1, x0, 1\nfence\nebreak\naddi x2, x1, 1\n")));
+    const ebreakSlot = simulation.history
+      .flatMap((snapshot) => Object.values(snapshot.stages))
+      .find((slot) => slot?.instruction.op === "ebreak" && slot.isEbreak);
+
+    expect(simulation.current.halted).toBe(true);
+    expect(simulation.current.registers[1]).toBe(1);
+    expect(simulation.current.registers[2]).toBe(2);
+    expect(ebreakSlot?.isEbreak).toBe(true);
+    expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(
+      false,
+    );
+  });
+
+  it("reports ecall as a decode-time error condition", () => {
+    const simulation = runSimulation(createSimulation(assembled("ecall\naddi x1, x0, 1\n")));
+    const errorEvents = simulation.history
+      .flatMap((snapshot) => snapshot.events)
+      .filter((event) => event.kind === "error");
+
+    expect(simulation.current.halted).toBe(true);
+    expect(simulation.current.registers[1]).toBe(0);
+    expect(errorEvents).toHaveLength(1);
+    expect(errorEvents[0]?.detail).toMatchObject({ errorKind: "ecall" });
+  });
+
   it("steps backward through history", async () => {
     const { stepBackSimulation } = await import("../../src/core");
     const program = assembled("addi x1, x0, 1\n");

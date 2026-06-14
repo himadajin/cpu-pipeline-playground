@@ -193,6 +193,11 @@ function parseInstruction(
   }
 
   const op = mnemonic;
+  if (op === "fence" || op === "ecall" || op === "ebreak") {
+    if (args.length !== 0) return fail(`${op} does not take operands in rask.`);
+    return { ...base, op };
+  }
+
   if (isRTypeOpcode(op)) {
     if (args.length !== 3) return fail(`${op} expects rd, rs1, rs2.`);
     const rd = parseRegister(args[0]);
