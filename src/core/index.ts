@@ -2,6 +2,7 @@ export { assemble, instructionSet } from "./assembler";
 export {
   ASSEMBLER_MNEMONICS,
   destinationRegister,
+  INSTRUCTION_BINARY_METADATA,
   INSTRUCTION_METADATA,
   isAssemblerMnemonic,
   isBTypeOpcode,
@@ -12,6 +13,7 @@ export {
   sourceRegisters,
   writesRegister,
 } from "./instructionMetadata";
+export { decodeInstruction, encodeInstruction } from "./instructionCodec";
 export { toHex32, toInt32, toUint32 } from "./numbers";
 export { createSimulation, stepSimulation, stepBackSimulation, runSimulation } from "./simulator";
 export { SAMPLE_PROGRAMS } from "./samples";

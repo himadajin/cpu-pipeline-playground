@@ -16,6 +16,12 @@ export interface InstructionMetadata {
   description: string;
 }
 
+export interface InstructionBinaryMetadata {
+  opcode: number;
+  funct3?: number;
+  funct7?: number;
+}
+
 export const INSTRUCTION_METADATA = {
   add: {
     format: "R",
@@ -358,6 +364,46 @@ export type PseudoMnemonic = (typeof PSEUDO_MNEMONICS)[number];
 export type AssemblerMnemonic = Opcode | PseudoMnemonic;
 
 export const ASSEMBLER_MNEMONICS = [...REAL_OPCODES, ...PSEUDO_MNEMONICS] as AssemblerMnemonic[];
+
+export const INSTRUCTION_BINARY_METADATA = {
+  add: { opcode: 0x33, funct3: 0x0, funct7: 0x00 },
+  sub: { opcode: 0x33, funct3: 0x0, funct7: 0x20 },
+  slt: { opcode: 0x33, funct3: 0x2, funct7: 0x00 },
+  sltu: { opcode: 0x33, funct3: 0x3, funct7: 0x00 },
+  addi: { opcode: 0x13, funct3: 0x0 },
+  slti: { opcode: 0x13, funct3: 0x2 },
+  sltiu: { opcode: 0x13, funct3: 0x3 },
+  andi: { opcode: 0x13, funct3: 0x7 },
+  ori: { opcode: 0x13, funct3: 0x6 },
+  xori: { opcode: 0x13, funct3: 0x4 },
+  lb: { opcode: 0x03, funct3: 0x0 },
+  lbu: { opcode: 0x03, funct3: 0x4 },
+  lh: { opcode: 0x03, funct3: 0x1 },
+  lhu: { opcode: 0x03, funct3: 0x5 },
+  lw: { opcode: 0x03, funct3: 0x2 },
+  sb: { opcode: 0x23, funct3: 0x0 },
+  sh: { opcode: 0x23, funct3: 0x1 },
+  sw: { opcode: 0x23, funct3: 0x2 },
+  beq: { opcode: 0x63, funct3: 0x0 },
+  bne: { opcode: 0x63, funct3: 0x1 },
+  blt: { opcode: 0x63, funct3: 0x4 },
+  bge: { opcode: 0x63, funct3: 0x5 },
+  bltu: { opcode: 0x63, funct3: 0x6 },
+  bgeu: { opcode: 0x63, funct3: 0x7 },
+  jal: { opcode: 0x6f },
+  jalr: { opcode: 0x67, funct3: 0x0 },
+  lui: { opcode: 0x37 },
+  auipc: { opcode: 0x17 },
+  and: { opcode: 0x33, funct3: 0x7, funct7: 0x00 },
+  or: { opcode: 0x33, funct3: 0x6, funct7: 0x00 },
+  xor: { opcode: 0x33, funct3: 0x4, funct7: 0x00 },
+  sll: { opcode: 0x33, funct3: 0x1, funct7: 0x00 },
+  srl: { opcode: 0x33, funct3: 0x5, funct7: 0x00 },
+  sra: { opcode: 0x33, funct3: 0x5, funct7: 0x20 },
+  slli: { opcode: 0x13, funct3: 0x1, funct7: 0x00 },
+  srli: { opcode: 0x13, funct3: 0x5, funct7: 0x00 },
+  srai: { opcode: 0x13, funct3: 0x5, funct7: 0x20 },
+} satisfies Record<Opcode, InstructionBinaryMetadata>;
 
 export function isOpcode(value: string): value is Opcode {
   return Object.prototype.hasOwnProperty.call(INSTRUCTION_METADATA, value);

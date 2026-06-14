@@ -1,5 +1,4 @@
 import {
-  toInstructionWord,
   toByteAddress,
   toRegisterIndex,
   toShiftAmountImmediate,
@@ -14,7 +13,8 @@ import {
   isRTypeOpcode,
 } from "./instructionMetadata";
 import type { AssembleError, AssembleResult, ByteAddress, Instruction, LabelTable, RegisterIndex } from "./types";
-import { RASK_RESET_PC, type ExecutionImage, type ExecutionImageInstruction, type InstructionWord } from "./types";
+import { RASK_RESET_PC, type ExecutionImage, type ExecutionImageInstruction } from "./types";
+import { encodeInstruction } from "./instructionCodec";
 
 const INSTRUCTION_SIZE_BYTES = 4;
 const DEFAULT_BASE_ADDRESS = toByteAddress(RASK_RESET_PC);
@@ -133,6 +133,7 @@ export function createExecutionImage(
     const expandedFrom =
       instruction.text.trim().split(/\s+/, 1)[0]?.toLowerCase() !== instruction.op ? instruction.source : undefined;
     return {
+      id: instruction.id,
       address,
       word: encodeInstruction(instruction, address),
       instruction,
@@ -285,137 +286,6 @@ function parseInstruction(
   }
 
   return fail(`Unsupported instruction "${op}".`);
-}
-
-function encodeInstruction(instruction: Instruction, pc: ByteAddress): InstructionWord {
-  switch (instruction.op) {
-    case "add":
-      return encodeR(0x00, instruction.rs2, instruction.rs1, 0x0, instruction.rd, 0x33);
-    case "sub":
-      return encodeR(0x20, instruction.rs2, instruction.rs1, 0x0, instruction.rd, 0x33);
-    case "slt":
-      return encodeR(0x00, instruction.rs2, instruction.rs1, 0x2, instruction.rd, 0x33);
-    case "sltu":
-      return encodeR(0x00, instruction.rs2, instruction.rs1, 0x3, instruction.rd, 0x33);
-    case "and":
-      return encodeR(0x00, instruction.rs2, instruction.rs1, 0x7, instruction.rd, 0x33);
-    case "or":
-      return encodeR(0x00, instruction.rs2, instruction.rs1, 0x6, instruction.rd, 0x33);
-    case "xor":
-      return encodeR(0x00, instruction.rs2, instruction.rs1, 0x4, instruction.rd, 0x33);
-    case "sll":
-      return encodeR(0x00, instruction.rs2, instruction.rs1, 0x1, instruction.rd, 0x33);
-    case "srl":
-      return encodeR(0x00, instruction.rs2, instruction.rs1, 0x5, instruction.rd, 0x33);
-    case "sra":
-      return encodeR(0x20, instruction.rs2, instruction.rs1, 0x5, instruction.rd, 0x33);
-    case "addi":
-      return encodeI(instruction.imm, instruction.rs1, 0x0, instruction.rd, 0x13);
-    case "slti":
-      return encodeI(instruction.imm, instruction.rs1, 0x2, instruction.rd, 0x13);
-    case "sltiu":
-      return encodeI(instruction.imm, instruction.rs1, 0x3, instruction.rd, 0x13);
-    case "andi":
-      return encodeI(instruction.imm, instruction.rs1, 0x7, instruction.rd, 0x13);
-    case "ori":
-      return encodeI(instruction.imm, instruction.rs1, 0x6, instruction.rd, 0x13);
-    case "xori":
-      return encodeI(instruction.imm, instruction.rs1, 0x4, instruction.rd, 0x13);
-    case "slli":
-      return encodeI(instruction.imm, instruction.rs1, 0x1, instruction.rd, 0x13);
-    case "srli":
-      return encodeI(instruction.imm, instruction.rs1, 0x5, instruction.rd, 0x13);
-    case "srai":
-      return encodeI(0x400 | instruction.imm, instruction.rs1, 0x5, instruction.rd, 0x13);
-    case "lb":
-      return encodeI(instruction.imm, instruction.rs1, 0x0, instruction.rd, 0x03);
-    case "lh":
-      return encodeI(instruction.imm, instruction.rs1, 0x1, instruction.rd, 0x03);
-    case "lw":
-      return encodeI(instruction.imm, instruction.rs1, 0x2, instruction.rd, 0x03);
-    case "lbu":
-      return encodeI(instruction.imm, instruction.rs1, 0x4, instruction.rd, 0x03);
-    case "lhu":
-      return encodeI(instruction.imm, instruction.rs1, 0x5, instruction.rd, 0x03);
-    case "jalr":
-      return encodeI(instruction.imm, instruction.rs1, 0x0, instruction.rd, 0x67);
-    case "sb":
-      return encodeS(instruction.imm, instruction.rs2, instruction.rs1, 0x0, 0x23);
-    case "sh":
-      return encodeS(instruction.imm, instruction.rs2, instruction.rs1, 0x1, 0x23);
-    case "sw":
-      return encodeS(instruction.imm, instruction.rs2, instruction.rs1, 0x2, 0x23);
-    case "beq":
-      return encodeB(instruction.target - pc, instruction.rs2, instruction.rs1, 0x0, 0x63);
-    case "bne":
-      return encodeB(instruction.target - pc, instruction.rs2, instruction.rs1, 0x1, 0x63);
-    case "blt":
-      return encodeB(instruction.target - pc, instruction.rs2, instruction.rs1, 0x4, 0x63);
-    case "bge":
-      return encodeB(instruction.target - pc, instruction.rs2, instruction.rs1, 0x5, 0x63);
-    case "bltu":
-      return encodeB(instruction.target - pc, instruction.rs2, instruction.rs1, 0x6, 0x63);
-    case "bgeu":
-      return encodeB(instruction.target - pc, instruction.rs2, instruction.rs1, 0x7, 0x63);
-    case "jal":
-      return encodeJ(instruction.target - pc, instruction.rd, 0x6f);
-    case "lui":
-      return encodeU(instruction.imm, instruction.rd, 0x37);
-    case "auipc":
-      return encodeU(instruction.imm, instruction.rd, 0x17);
-  }
-}
-
-function encodeR(
-  funct7: number,
-  rs2: number,
-  rs1: number,
-  funct3: number,
-  rd: number,
-  opcode: number,
-): InstructionWord {
-  return toInstructionWord((funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode);
-}
-
-function encodeI(imm: number, rs1: number, funct3: number, rd: number, opcode: number): InstructionWord {
-  return toInstructionWord(((imm & 0xfff) << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode);
-}
-
-function encodeS(imm: number, rs2: number, rs1: number, funct3: number, opcode: number): InstructionWord {
-  const value = imm & 0xfff;
-  return toInstructionWord(
-    ((value >>> 5) << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | ((value & 0x1f) << 7) | opcode,
-  );
-}
-
-function encodeB(offset: number, rs2: number, rs1: number, funct3: number, opcode: number): InstructionWord {
-  const value = offset & 0x1fff;
-  return toInstructionWord(
-    (((value >>> 12) & 0x1) << 31) |
-      (((value >>> 5) & 0x3f) << 25) |
-      (rs2 << 20) |
-      (rs1 << 15) |
-      (funct3 << 12) |
-      (((value >>> 1) & 0xf) << 8) |
-      (((value >>> 11) & 0x1) << 7) |
-      opcode,
-  );
-}
-
-function encodeU(imm: number, rd: number, opcode: number): InstructionWord {
-  return toInstructionWord(((imm & 0xfffff) << 12) | (rd << 7) | opcode);
-}
-
-function encodeJ(offset: number, rd: number, opcode: number): InstructionWord {
-  const value = offset & 0x1fffff;
-  return toInstructionWord(
-    (((value >>> 20) & 0x1) << 31) |
-      (((value >>> 1) & 0x3ff) << 21) |
-      (((value >>> 11) & 0x1) << 20) |
-      (((value >>> 12) & 0xff) << 12) |
-      (rd << 7) |
-      opcode,
-  );
 }
 
 function stripComment(line: string): string {

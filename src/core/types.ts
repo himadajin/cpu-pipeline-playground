@@ -166,9 +166,10 @@ export interface AssembleResult {
 }
 
 export interface ExecutionImageInstruction {
+  id: number;
   address: ByteAddress;
   word: InstructionWord;
-  instruction: Instruction;
+  instruction?: Instruction;
   source: SourceLine;
   expandedFrom?: SourceLine;
 }
@@ -206,11 +207,19 @@ export interface ExitRequest {
   success: boolean;
 }
 
+export type DecodeErrorKind = "undef-instr" | "ecall";
+
+export interface DecodeError {
+  kind: DecodeErrorKind;
+  message: string;
+}
+
 export interface StageSlot {
   instructionId: number;
   pc: ByteAddress;
   instructionWord: InstructionWord;
   instruction: Instruction;
+  decodeError?: DecodeError;
   result?: Int32;
   address?: ByteAddress;
   storeValue?: Int32;

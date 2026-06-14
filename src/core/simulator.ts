@@ -3,7 +3,9 @@ import type {
   ByteAddress,
   ByteMemory,
   ByteValue,
+  DecodeError,
   ExecutionImage,
+  ExecutionImageInstruction,
   ExitRequest,
   Instruction,
   InstructionWord,
@@ -21,6 +23,7 @@ import type {
   SimulationInitialState,
 } from "./types";
 import { createExecutionImage } from "./assembler";
+import { decodeInstruction } from "./instructionCodec";
 import { destinationRegister, sourceRegisters } from "./instructionMetadata";
 import { RASK_EXIT_DEVICE_ADDRESS, RASK_RAM_BASE, RASK_RAM_LIMIT_EXCLUSIVE, RASK_UART_DATA_ADDRESS } from "./types";
 import {
@@ -65,7 +68,7 @@ export function createSimulation(
   };
   return {
     executionImage,
-    program: executionImage.instructions.map((entry) => entry.instruction),
+    program: executionImage.instructions.map((entry) => instructionFromImageEntry(entry)),
     history: [current],
     current,
   };
@@ -103,8 +106,9 @@ export function stepSimulation(state: SimulationState): SimulationState {
   const wbOutput = writebackValue(slots.WB);
   peerStages = slots;
   const exOutput = runExecute(cycle, slots.EX, registers, memOutput, wbOutput, events);
+  const decodeOutput = runDecode(cycle, slots.ID, events);
 
-  const stall = shouldStallForLoadUse(slots.ID, slots.EX);
+  const stall = !decodeOutput?.halted && shouldStallForLoadUse(slots.ID, slots.EX);
   if (stall && slots.ID) {
     events.push({
       id: eventId(cycle, "stall", slots.ID.instructionId),
@@ -144,7 +148,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
   const nextStages: StageSlots = {
     WB: memOutput ? { ...slots.MEM!, ...memOutput } : slots.MEM,
     MEM: exOutput ? { ...slots.EX!, ...exOutput } : slots.EX,
-    EX: flush || stall ? null : slots.ID,
+    EX: flush || stall || decodeOutput?.halted ? null : slots.ID,
     ID: flush ? null : stall ? slots.ID : slots.IF,
     IF: stall ? slots.IF : null,
   };
@@ -161,7 +165,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
   if (registers[0] !== 0) registers[0] = toInt32(0);
   const timeline = buildTimeline(cycle, nextStages, events);
   const halted =
-    Boolean(exOutput?.halted || memOutput?.halted || nextStages.IF?.halted) ||
+    Boolean(exOutput?.halted || memOutput?.halted || decodeOutput?.halted || nextStages.IF?.halted) ||
     (isOutsideInstructionImage(state.executionImage, pc) && STAGES.every((stage) => nextStages[stage] === null));
   const current: CycleSnapshot = {
     cycle,
@@ -208,7 +212,42 @@ function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress): Stag
   }
   const fetched = executionImage.instructionMemory[pc];
   if (!fetched) return null;
-  return { instructionId: fetched.instruction.id, pc, instructionWord: fetched.word, instruction: fetched.instruction };
+  const decoded = decodeInstruction(fetched.word, pc, fetched.id, fetched.source, fetched.instruction?.text);
+  if (decoded.ok) {
+    return { instructionId: fetched.id, pc, instructionWord: fetched.word, instruction: decoded.instruction };
+  }
+  return {
+    instructionId: fetched.id,
+    pc,
+    instructionWord: fetched.word,
+    instruction: invalidInstruction(fetched.id, fetched.source, fetched.instruction?.text ?? decoded.error.message),
+    decodeError: decoded.error,
+  };
+}
+
+function runDecode(cycle: number, slot: StageSlot | null, events: PipelineEvent[]): Partial<StageSlot> | null {
+  if (!slot?.decodeError) return null;
+  events.push(errorEvent(cycle, slot, slot.decodeError.message, { errorKind: slot.decodeError.kind }));
+  return { halted: true };
+}
+
+function instructionFromImageEntry(entry: ExecutionImageInstruction): Instruction {
+  if (entry.instruction) return entry.instruction;
+  const decoded = decodeInstruction(entry.word, entry.address, entry.id, entry.source);
+  if (decoded.ok) return decoded.instruction;
+  return invalidInstruction(entry.id, entry.source, decoded.error.message);
+}
+
+function invalidInstruction(id: number, source: { line: number; text: string }, text: string): Instruction {
+  return {
+    id,
+    op: "addi",
+    rd: toRegisterIndex(0),
+    rs1: toRegisterIndex(0),
+    imm: toSigned12Immediate(0),
+    source,
+    text,
+  };
 }
 
 function isOutsideInstructionImage(executionImage: ExecutionImage, pc: ByteAddress): boolean {
@@ -809,7 +848,12 @@ function isAlignedInstructionAddress(address: ByteAddress): boolean {
   return address % INSTRUCTION_SIZE_BYTES === 0;
 }
 
-function errorEvent(cycle: number, slot: StageSlot, message: string): PipelineEvent {
+function errorEvent(
+  cycle: number,
+  slot: StageSlot,
+  message: string,
+  detail: Record<string, string | number | boolean> = {},
+): PipelineEvent {
   return {
     id: eventId(cycle, "error", slot.instructionId),
     cycle,
@@ -817,6 +861,6 @@ function errorEvent(cycle: number, slot: StageSlot, message: string): PipelineEv
     kind: "error",
     label: "error",
     message,
-    detail: { pc: slot.pc },
+    detail: { pc: slot.pc, ...detail },
   };
 }
