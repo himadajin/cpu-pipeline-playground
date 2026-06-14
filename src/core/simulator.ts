@@ -2,7 +2,9 @@ import type {
   CycleSnapshot,
   ByteAddress,
   ByteMemory,
+  ByteValue,
   ExecutionImage,
+  ExitRequest,
   Instruction,
   InstructionWord,
   Int32,
@@ -20,6 +22,7 @@ import type {
 } from "./types";
 import { createExecutionImage } from "./assembler";
 import { destinationRegister, sourceRegisters } from "./instructionMetadata";
+import { RASK_EXIT_DEVICE_ADDRESS, RASK_RAM_BASE, RASK_RAM_LIMIT_EXCLUSIVE, RASK_UART_DATA_ADDRESS } from "./types";
 import {
   toByteAddress,
   toByteValue,
@@ -53,6 +56,7 @@ export function createSimulation(
     stages: emptyStages(),
     registers,
     memory: normalizeInitialMemory(initialState.memory ?? {}),
+    consoleOutput: [],
     events: [],
     registerDiffs: [],
     memoryDiffs: [],
@@ -88,13 +92,14 @@ export function stepSimulation(state: SimulationState): SimulationState {
   const cycle = previous.cycle + 1;
   const registers = previous.registers.slice();
   const memory = { ...previous.memory };
+  const consoleOutput = previous.consoleOutput.slice();
   const events: PipelineEvent[] = [];
   const registerDiffs: RegisterDiff[] = [];
   const memoryDiffs: MemoryDiff[] = [];
   const slots = cloneStages(previous.stages);
 
   commitWriteback(cycle, slots.WB, registers, registerDiffs, events);
-  const memOutput = runMemory(cycle, slots.MEM, memory, memoryDiffs, events);
+  const memOutput = runMemory(cycle, slots.MEM, memory, consoleOutput, memoryDiffs, events);
   const wbOutput = writebackValue(slots.WB);
   peerStages = slots;
   const exOutput = runExecute(cycle, slots.EX, registers, memOutput, wbOutput, events);
@@ -164,6 +169,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
     stages: nextStages,
     registers,
     memory,
+    consoleOutput,
     events,
     registerDiffs,
     memoryDiffs,
@@ -241,12 +247,15 @@ function runMemory(
   cycle: number,
   slot: StageSlot | null,
   memory: ByteMemory,
+  consoleOutput: ByteValue[],
   diffs: MemoryDiff[],
   events: PipelineEvent[],
 ): Partial<StageSlot> | null {
   if (!slot) return null;
   if (slot.instruction.op === "lb" || slot.instruction.op === "lbu") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 1, "load");
+    if (!access.ok) return memoryError(cycle, slot, access.message, events);
     const loadedValue =
       slot.instruction.op === "lb" ? readSignedByte(memory, address) : readUnsignedByte(memory, address);
     events.push({
@@ -262,6 +271,8 @@ function runMemory(
   }
   if (slot.instruction.op === "lh" || slot.instruction.op === "lhu") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 2, "load");
+    if (!access.ok) return memoryError(cycle, slot, access.message, events);
     if (!isAlignedHalfwordAddress(address)) {
       events.push(
         errorEvent(cycle, slot, `${slot.instruction.text} cannot load misaligned halfword address ${address}.`),
@@ -283,6 +294,8 @@ function runMemory(
   }
   if (slot.instruction.op === "lw") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 4, "load");
+    if (!access.ok) return memoryError(cycle, slot, access.message, events);
     if (!isAlignedWordAddress(address)) {
       events.push(errorEvent(cycle, slot, `${slot.instruction.text} cannot load misaligned word address ${address}.`));
       return { halted: true };
@@ -301,7 +314,27 @@ function runMemory(
   }
   if (slot.instruction.op === "sb") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 1, "store");
+    if (!access.ok) return memoryError(cycle, slot, access.message, events);
     const after = toByteValue(slot.storeValue ?? 0);
+    if (access.kind === "uart") {
+      consoleOutput.push(after);
+      events.push({
+        id: eventId(cycle, "memory", slot.instructionId),
+        cycle,
+        instructionId: slot.instructionId,
+        kind: "memory",
+        label: "uart",
+        message: `${slot.instruction.text} writes byte ${after} to UART data register.`,
+        detail: { address, value: after },
+      });
+      return {};
+    }
+    if (access.kind === "exit") {
+      const exitRequest = decodeExitRequest(after);
+      events.push(deviceStoreEvent(cycle, slot, "exit", address, after));
+      return { exitRequest };
+    }
     const before = memory[address] ?? toByteValue(0);
     memory[address] = after;
     diffs.push({ address, before, after });
@@ -317,6 +350,8 @@ function runMemory(
   }
   if (slot.instruction.op === "sh") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 2, "store");
+    if (!access.ok) return memoryError(cycle, slot, access.message, events);
     if (!isAlignedHalfwordAddress(address)) {
       events.push(
         errorEvent(cycle, slot, `${slot.instruction.text} cannot store misaligned halfword address ${address}.`),
@@ -324,6 +359,14 @@ function runMemory(
       return { halted: true };
     }
     const value = toUint32(slot.storeValue ?? 0);
+    if (access.kind === "uart") {
+      return memoryError(cycle, slot, `${slot.instruction.text} cannot store halfword to UART data register.`, events);
+    }
+    if (access.kind === "exit") {
+      const exitRequest = decodeExitRequest(value & 0xffff);
+      events.push(deviceStoreEvent(cycle, slot, "exit", address, value & 0xffff));
+      return { exitRequest };
+    }
     const bytes = [toByteValue(value), toByteValue(value >>> 8)];
     bytes.forEach((after, offset) => {
       const byteAddress = toByteAddress(address + offset);
@@ -343,11 +386,21 @@ function runMemory(
   }
   if (slot.instruction.op === "sw") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 4, "store");
+    if (!access.ok) return memoryError(cycle, slot, access.message, events);
     if (!isAlignedWordAddress(address)) {
       events.push(errorEvent(cycle, slot, `${slot.instruction.text} cannot store misaligned word address ${address}.`));
       return { halted: true };
     }
     const value = toUint32(slot.storeValue ?? 0);
+    if (access.kind === "uart") {
+      return memoryError(cycle, slot, `${slot.instruction.text} cannot store word to UART data register.`, events);
+    }
+    if (access.kind === "exit") {
+      const exitRequest = decodeExitRequest(value);
+      events.push(deviceStoreEvent(cycle, slot, "exit", address, value));
+      return { exitRequest };
+    }
     const bytes = [toByteValue(value), toByteValue(value >>> 8), toByteValue(value >>> 16), toByteValue(value >>> 24)];
     bytes.forEach((after, offset) => {
       const byteAddress = toByteAddress(address + offset);
@@ -472,14 +525,14 @@ function runExecute(
     case "lhu":
     case "lw": {
       const a = read(slot.instruction.rs1);
-      return { address: toByteAddress(toInt32(a + slot.instruction.imm)) };
+      return { address: toByteAddress(toUint32(a + slot.instruction.imm)) };
     }
     case "sb":
     case "sh":
     case "sw": {
       const a = read(slot.instruction.rs1);
       const b = read(slot.instruction.rs2);
-      return { address: toByteAddress(toInt32(a + slot.instruction.imm)), storeValue: b };
+      return { address: toByteAddress(toUint32(a + slot.instruction.imm)), storeValue: b };
     }
     case "beq": {
       const a = read(slot.instruction.rs1);
@@ -654,11 +707,66 @@ function normalizeInitialMemory(memory: Record<number, number>): ByteMemory {
   const normalized: ByteMemory = {};
   for (const [address, value] of Object.entries(memory)) {
     const byteAddress = Number(address);
-    if (Number.isInteger(byteAddress)) {
+    if (Number.isInteger(byteAddress) && isRamRange(byteAddress, 1)) {
       normalized[toByteAddress(byteAddress)] = toByteValue(value);
     }
   }
   return normalized;
+}
+
+type MemoryDirection = "load" | "store";
+type MemoryAccess =
+  | { ok: true; kind: "ram" | "uart" | "exit" }
+  | { ok: false; kind: "mem-unmapped" | "mmio-violation"; message: string };
+
+function classifyDataAccess(address: ByteAddress, width: 1 | 2 | 4, direction: MemoryDirection): MemoryAccess {
+  const unsigned = toUint32(address);
+  if (isRamRange(unsigned, width)) return { ok: true, kind: "ram" };
+  if (unsigned === RASK_UART_DATA_ADDRESS) {
+    if (direction === "store" && width === 1) return { ok: true, kind: "uart" };
+    return { ok: false, kind: "mmio-violation", message: `Invalid UART ${direction} at byte address ${unsigned}.` };
+  }
+  if (unsigned === RASK_EXIT_DEVICE_ADDRESS) {
+    if (direction === "store") return { ok: true, kind: "exit" };
+    return {
+      ok: false,
+      kind: "mmio-violation",
+      message: `Invalid exit device ${direction} at byte address ${unsigned}.`,
+    };
+  }
+  return { ok: false, kind: "mem-unmapped", message: `Unmapped ${direction} at byte address ${unsigned}.` };
+}
+
+function isRamRange(address: number, width: 1 | 2 | 4): boolean {
+  return address >= RASK_RAM_BASE && address + width <= RASK_RAM_LIMIT_EXCLUSIVE;
+}
+
+function memoryError(cycle: number, slot: StageSlot, message: string, events: PipelineEvent[]): Partial<StageSlot> {
+  events.push(errorEvent(cycle, slot, message));
+  return { halted: true };
+}
+
+function decodeExitRequest(value: number): ExitRequest {
+  const code = value >>> 16;
+  return { code, success: (value & 0xffff) === 0x5555 };
+}
+
+function deviceStoreEvent(
+  cycle: number,
+  slot: StageSlot,
+  device: "exit",
+  address: ByteAddress,
+  value: number,
+): PipelineEvent {
+  return {
+    id: eventId(cycle, "memory", slot.instructionId),
+    cycle,
+    instructionId: slot.instructionId,
+    kind: "memory",
+    label: device,
+    message: `${slot.instruction.text} writes ${toUint32(value)} to ${device} device register.`,
+    detail: { address, value: toUint32(value) },
+  };
 }
 
 function readWord(memory: ByteMemory, address: ByteAddress): Int32 {

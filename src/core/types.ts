@@ -14,6 +14,11 @@ export type ByteMemory = Record<number, ByteValue>;
 export type RegisterFile = Int32[];
 
 export const RASK_RESET_PC = 0x80000000;
+export const RASK_RAM_BASE = RASK_RESET_PC;
+export const RASK_RAM_SIZE_BYTES = 4 * 1024 * 1024;
+export const RASK_RAM_LIMIT_EXCLUSIVE = RASK_RAM_BASE + RASK_RAM_SIZE_BYTES;
+export const RASK_UART_DATA_ADDRESS = 0x10000000;
+export const RASK_EXIT_DEVICE_ADDRESS = 0x00100000;
 
 export type Opcode =
   | "add"
@@ -196,6 +201,11 @@ export interface MemoryDiff {
   after: ByteValue;
 }
 
+export interface ExitRequest {
+  code: number;
+  success: boolean;
+}
+
 export interface StageSlot {
   instructionId: number;
   pc: ByteAddress;
@@ -207,6 +217,7 @@ export interface StageSlot {
   loadedValue?: Int32;
   taken?: boolean;
   nextPc?: ByteAddress;
+  exitRequest?: ExitRequest;
   halted?: boolean;
 }
 
@@ -225,6 +236,7 @@ export interface CycleSnapshot {
   stages: StageSlots;
   registers: RegisterFile;
   memory: ByteMemory;
+  consoleOutput: ByteValue[];
   events: PipelineEvent[];
   registerDiffs: RegisterDiff[];
   memoryDiffs: MemoryDiff[];

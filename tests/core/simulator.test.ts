@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { assemble, createSimulation, RASK_RESET_PC, runSimulation, stepSimulation } from "../../src/core";
 
 const RESET_LINK = -2147483648;
+const DATA_ADDRESS = RASK_RESET_PC + 0x10000;
 
 function assembled(source: string) {
   const result = assemble(source);
@@ -12,31 +13,31 @@ function assembled(source: string) {
 describe("simulator", () => {
   it("accepts initial architectural state while keeping x0 hardwired to zero", () => {
     const simulation = createSimulation(assembled("lw x2, 0(x1)\n"), {
-      registers: { 0: 123, 1: 16 },
-      memory: { 16: 42, 17: 0, 18: 0, 19: 0 },
+      registers: { 0: 123, 1: DATA_ADDRESS },
+      memory: { [DATA_ADDRESS]: 42, [DATA_ADDRESS + 1]: 0, [DATA_ADDRESS + 2]: 0, [DATA_ADDRESS + 3]: 0 },
     });
 
     const result = runSimulation(simulation);
     expect(result.current.registers[0]).toBe(0);
-    expect(result.current.registers[1]).toBe(16);
+    expect(result.current.registers[1]).toBe(RESET_LINK + 0x10000);
     expect(result.current.registers[2]).toBe(42);
   });
 
   it("commits register and memory updates", () => {
     const program = assembled(`
-addi x1, x0, 8
+lui x1, 0x80010
 addi x2, x0, 42
 sw x2, 0(x1)
 lw x3, 0(x1)
 `);
     const simulation = runSimulation(createSimulation(program));
-    expect(simulation.current.registers[1]).toBe(8);
+    expect(simulation.current.registers[1]).toBe(RESET_LINK + 0x10000);
     expect(simulation.current.registers[2]).toBe(42);
     expect(simulation.current.registers[3]).toBe(42);
-    expect(simulation.current.memory[8]).toBe(42);
-    expect(simulation.current.memory[9]).toBe(0);
-    expect(simulation.current.memory[10]).toBe(0);
-    expect(simulation.current.memory[11]).toBe(0);
+    expect(simulation.current.memory[DATA_ADDRESS]).toBe(42);
+    expect(simulation.current.memory[DATA_ADDRESS + 1]).toBe(0);
+    expect(simulation.current.memory[DATA_ADDRESS + 2]).toBe(0);
+    expect(simulation.current.memory[DATA_ADDRESS + 3]).toBe(0);
   });
 
   it("records forwarding events for ALU dependencies", () => {
@@ -53,7 +54,7 @@ add x2, x1, x1
 
   it("stalls on load-use hazards", () => {
     const program = assembled(`
-addi x1, x0, 12
+lui x1, 0x80010
 addi x2, x0, 5
 sw x2, 0(x1)
 lw x3, 0(x1)
@@ -68,21 +69,21 @@ add x4, x3, x2
 
   it("forwards ALU results into store data", () => {
     const program = assembled(`
-addi x1, x0, 16
+lui x1, 0x80010
 addi x2, x0, 41
 addi x3, x2, 1
 sw x3, 0(x1)
 `);
     const simulation = runSimulation(createSimulation(program));
-    expect(simulation.current.memory[16]).toBe(42);
-    expect(simulation.current.memory[17]).toBe(0);
-    expect(simulation.current.memory[18]).toBe(0);
-    expect(simulation.current.memory[19]).toBe(0);
+    expect(simulation.current.memory[DATA_ADDRESS]).toBe(42);
+    expect(simulation.current.memory[DATA_ADDRESS + 1]).toBe(0);
+    expect(simulation.current.memory[DATA_ADDRESS + 2]).toBe(0);
+    expect(simulation.current.memory[DATA_ADDRESS + 3]).toBe(0);
   });
 
   it("preserves fetched instructions while a load-use stall holds decode", () => {
     const program = assembled(`
-addi x1, x0, 16
+lui x1, 0x80010
 addi x2, x0, 42
 sw x2, 0(x1)
 lw x3, 0(x1)
@@ -91,7 +92,7 @@ sw x4, 4(x1)
 `);
     const simulation = runSimulation(createSimulation(program));
     expect(simulation.current.registers[4]).toBe(43);
-    expect(simulation.current.memory[20]).toBe(43);
+    expect(simulation.current.memory[DATA_ADDRESS + 4]).toBe(43);
   });
 
   it("flushes younger instructions after a taken branch", () => {
@@ -171,14 +172,18 @@ addi x4, x0, 7
 
   it("stalls when jalr depends on a loaded source register", () => {
     const program = assembled(`
-addi x1, x0, 16
+lui x1, 0x80010
 lw x2, 0(x1)
 jalr x3, 0(x2)
 addi x4, x0, 99
 target:
 addi x5, x0, 1
 `);
-    const simulation = runSimulation(createSimulation(program, { memory: { 16: 16, 17: 0, 18: 0, 19: 128 } }));
+    const simulation = runSimulation(
+      createSimulation(program, {
+        memory: { [DATA_ADDRESS]: 16, [DATA_ADDRESS + 1]: 0, [DATA_ADDRESS + 2]: 0, [DATA_ADDRESS + 3]: 128 },
+      }),
+    );
 
     expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
       true,
@@ -200,7 +205,7 @@ auipc x2, 1
 
   it("uses instruction forms for writeback and source register behavior", () => {
     const program = assembled(`
-addi x1, x0, 16
+lui x1, 0x80010
 addi x2, x0, 4
 sw x2, 0(x1)
 lw x3, 0(x1)
@@ -225,13 +230,17 @@ addi x6, x0, 1
 
   it("does not treat jal as a load-use source register consumer", () => {
     const program = assembled(`
-addi x1, x0, 16
+lui x1, 0x80010
 lw x2, 0(x1)
 jal x3, done
 done:
 addi x4, x0, 1
 `);
-    const simulation = runSimulation(createSimulation(program, { memory: { 16: 1, 17: 0, 18: 0, 19: 0 } }));
+    const simulation = runSimulation(
+      createSimulation(program, {
+        memory: { [DATA_ADDRESS]: 1, [DATA_ADDRESS + 1]: 0, [DATA_ADDRESS + 2]: 0, [DATA_ADDRESS + 3]: 0 },
+      }),
+    );
 
     expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
       false,
@@ -348,8 +357,8 @@ srai x6, x1, 1
   it("loads signed bytes from byte memory", () => {
     const simulation = runSimulation(
       createSimulation(assembled("lb x2, 1(x1)\nlb x3, 2(x1)\n"), {
-        registers: { 1: 16 },
-        memory: { 17: 0xff, 18: 0x7f },
+        registers: { 1: DATA_ADDRESS },
+        memory: { [DATA_ADDRESS + 1]: 0xff, [DATA_ADDRESS + 2]: 0x7f },
       }),
     );
     expect(simulation.current.registers[2]).toBe(-1);
@@ -359,8 +368,14 @@ srai x6, x1, 1
   it("loads zero-extended bytes and signed or zero-extended halfwords", () => {
     const simulation = runSimulation(
       createSimulation(assembled("lbu x2, 1(x1)\nlh x3, 2(x1)\nlhu x4, 2(x1)\nlh x5, 4(x1)\n"), {
-        registers: { 1: 16 },
-        memory: { 17: 0xff, 18: 0x80, 19: 0xff, 20: 0x34, 21: 0x12 },
+        registers: { 1: DATA_ADDRESS },
+        memory: {
+          [DATA_ADDRESS + 1]: 0xff,
+          [DATA_ADDRESS + 2]: 0x80,
+          [DATA_ADDRESS + 3]: 0xff,
+          [DATA_ADDRESS + 4]: 0x34,
+          [DATA_ADDRESS + 5]: 0x12,
+        },
       }),
     );
     expect(simulation.current.registers[2]).toBe(255);
@@ -372,15 +387,15 @@ srai x6, x1, 1
   it("stores one byte at unaligned byte addresses and records one byte diff", () => {
     const simulation = runSimulation(
       createSimulation(assembled("sb x2, 1(x1)\n"), {
-        registers: { 1: 16, 2: 0x12345678 },
-        memory: { 16: 0xaa, 17: 0xbb, 18: 0xcc },
+        registers: { 1: DATA_ADDRESS, 2: 0x12345678 },
+        memory: { [DATA_ADDRESS]: 0xaa, [DATA_ADDRESS + 1]: 0xbb, [DATA_ADDRESS + 2]: 0xcc },
       }),
     );
-    expect(simulation.current.memory[16]).toBe(0xaa);
-    expect(simulation.current.memory[17]).toBe(0x78);
-    expect(simulation.current.memory[18]).toBe(0xcc);
+    expect(simulation.current.memory[DATA_ADDRESS]).toBe(0xaa);
+    expect(simulation.current.memory[DATA_ADDRESS + 1]).toBe(0x78);
+    expect(simulation.current.memory[DATA_ADDRESS + 2]).toBe(0xcc);
     expect(simulation.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([
-      { address: 17, before: 0xbb, after: 0x78 },
+      { address: DATA_ADDRESS + 1, before: 0xbb, after: 0x78 },
     ]);
     expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(
       false,
@@ -390,16 +405,16 @@ srai x6, x1, 1
   it("stores little-endian halfwords and records two byte diffs", () => {
     const simulation = runSimulation(
       createSimulation(assembled("sh x2, 2(x1)\n"), {
-        registers: { 1: 16, 2: 0x12345678 },
-        memory: { 18: 0xaa, 19: 0xbb, 20: 0xcc },
+        registers: { 1: DATA_ADDRESS, 2: 0x12345678 },
+        memory: { [DATA_ADDRESS + 2]: 0xaa, [DATA_ADDRESS + 3]: 0xbb, [DATA_ADDRESS + 4]: 0xcc },
       }),
     );
-    expect(simulation.current.memory[18]).toBe(0x78);
-    expect(simulation.current.memory[19]).toBe(0x56);
-    expect(simulation.current.memory[20]).toBe(0xcc);
+    expect(simulation.current.memory[DATA_ADDRESS + 2]).toBe(0x78);
+    expect(simulation.current.memory[DATA_ADDRESS + 3]).toBe(0x56);
+    expect(simulation.current.memory[DATA_ADDRESS + 4]).toBe(0xcc);
     expect(simulation.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([
-      { address: 18, before: 0xaa, after: 0x78 },
-      { address: 19, before: 0xbb, after: 0x56 },
+      { address: DATA_ADDRESS + 2, before: 0xaa, after: 0x78 },
+      { address: DATA_ADDRESS + 3, before: 0xbb, after: 0x56 },
     ]);
   });
 
@@ -410,8 +425,8 @@ addi x3, x2, 1
 `);
     const simulation = runSimulation(
       createSimulation(program, {
-        registers: { 1: 16 },
-        memory: { 17: 0x7f },
+        registers: { 1: DATA_ADDRESS },
+        memory: { [DATA_ADDRESS + 1]: 0x7f },
       }),
     );
     expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
@@ -427,8 +442,8 @@ addi x3, x2, 1
 `);
     const simulation = runSimulation(
       createSimulation(program, {
-        registers: { 1: 16 },
-        memory: { 16: 0xff, 17: 0x7f },
+        registers: { 1: DATA_ADDRESS },
+        memory: { [DATA_ADDRESS]: 0xff, [DATA_ADDRESS + 1]: 0x7f },
       }),
     );
     expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
@@ -440,8 +455,13 @@ addi x3, x2, 1
   it("loads little-endian words from byte memory", () => {
     const simulation = runSimulation(
       createSimulation(assembled("lw x2, 0(x1)\n"), {
-        registers: { 1: 16 },
-        memory: { 16: 0x78, 17: 0x56, 18: 0x34, 19: 0x12 },
+        registers: { 1: DATA_ADDRESS },
+        memory: {
+          [DATA_ADDRESS]: 0x78,
+          [DATA_ADDRESS + 1]: 0x56,
+          [DATA_ADDRESS + 2]: 0x34,
+          [DATA_ADDRESS + 3]: 0x12,
+        },
       }),
     );
     expect(simulation.current.registers[2]).toBe(0x12345678);
@@ -449,38 +469,69 @@ addi x3, x2, 1
 
   it("stores little-endian words and records byte diffs", () => {
     const simulation = runSimulation(
-      createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 16, 2: 0x12345678 } }),
+      createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: DATA_ADDRESS, 2: 0x12345678 } }),
     );
-    expect(simulation.current.memory[16]).toBe(0x78);
-    expect(simulation.current.memory[17]).toBe(0x56);
-    expect(simulation.current.memory[18]).toBe(0x34);
-    expect(simulation.current.memory[19]).toBe(0x12);
+    expect(simulation.current.memory[DATA_ADDRESS]).toBe(0x78);
+    expect(simulation.current.memory[DATA_ADDRESS + 1]).toBe(0x56);
+    expect(simulation.current.memory[DATA_ADDRESS + 2]).toBe(0x34);
+    expect(simulation.current.memory[DATA_ADDRESS + 3]).toBe(0x12);
     expect(simulation.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([
-      { address: 16, before: 0, after: 0x78 },
-      { address: 17, before: 0, after: 0x56 },
-      { address: 18, before: 0, after: 0x34 },
-      { address: 19, before: 0, after: 0x12 },
+      { address: DATA_ADDRESS, before: 0, after: 0x78 },
+      { address: DATA_ADDRESS + 1, before: 0, after: 0x56 },
+      { address: DATA_ADDRESS + 2, before: 0, after: 0x34 },
+      { address: DATA_ADDRESS + 3, before: 0, after: 0x12 },
     ]);
   });
 
   it("halts with an error event on unaligned word memory access", () => {
-    const load = runSimulation(createSimulation(assembled("lw x2, 0(x1)\n"), { registers: { 1: 18 } }));
+    const load = runSimulation(createSimulation(assembled("lw x2, 0(x1)\n"), { registers: { 1: DATA_ADDRESS + 2 } }));
     expect(load.current.halted).toBe(true);
     expect(load.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
 
-    const store = runSimulation(createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 18, 2: 1 } }));
+    const store = runSimulation(
+      createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: DATA_ADDRESS + 2, 2: 1 } }),
+    );
     expect(store.current.halted).toBe(true);
     expect(store.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
   });
 
   it("halts with an error event on unaligned halfword memory access", () => {
-    const load = runSimulation(createSimulation(assembled("lh x2, 0(x1)\n"), { registers: { 1: 17 } }));
+    const load = runSimulation(createSimulation(assembled("lh x2, 0(x1)\n"), { registers: { 1: DATA_ADDRESS + 1 } }));
     expect(load.current.halted).toBe(true);
     expect(load.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
 
-    const store = runSimulation(createSimulation(assembled("sh x2, 0(x1)\n"), { registers: { 1: 17, 2: 1 } }));
+    const store = runSimulation(
+      createSimulation(assembled("sh x2, 0(x1)\n"), { registers: { 1: DATA_ADDRESS + 1, 2: 1 } }),
+    );
     expect(store.current.halted).toBe(true);
     expect(store.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
+  });
+
+  it("halts on unmapped RAM and invalid MMIO loads", () => {
+    const unmapped = runSimulation(createSimulation(assembled("lw x2, 0(x1)\n"), { registers: { 1: 16 } }));
+    expect(unmapped.current.halted).toBe(true);
+    expect(unmapped.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
+
+    const mmioLoad = runSimulation(createSimulation(assembled("lb x2, 0(x1)\n"), { registers: { 1: 0x10000000 } }));
+    expect(mmioLoad.current.halted).toBe(true);
+    expect(mmioLoad.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(true);
+  });
+
+  it("records UART output and exit device requests without RAM diffs", () => {
+    const uart = runSimulation(
+      createSimulation(assembled("sb x2, 0(x1)\n"), { registers: { 1: 0x10000000, 2: 0x41 } }),
+    );
+    expect(uart.current.consoleOutput).toEqual([0x41]);
+    expect(uart.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([]);
+
+    const exit = runSimulation(
+      createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 0x00005555 } }),
+    );
+    const exitSlot = exit.history
+      .flatMap((snapshot) => Object.values(snapshot.stages))
+      .find((slot) => slot?.exitRequest);
+    expect(exitSlot?.exitRequest).toEqual({ code: 0, success: true });
+    expect(exit.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([]);
   });
 
   it("steps backward through history", async () => {
