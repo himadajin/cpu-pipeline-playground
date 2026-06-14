@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { assemble, createSimulation, runSimulation, stepSimulation } from "../../src/core";
+import { assemble, createSimulation, RASK_RESET_PC, runSimulation, stepSimulation } from "../../src/core";
+
+const RESET_LINK = -2147483648;
 
 function assembled(source: string) {
   const result = assemble(source);
@@ -118,18 +120,18 @@ addi x3, x0, 7
     const simulation = runSimulation(createSimulation(program));
     expect(program[0]?.op).toBe("jal");
     if (program[0]?.op !== "jal") throw new Error("expected jal instruction");
-    expect(program[0].target).toBe(8);
-    expect(simulation.current.registers[1]).toBe(4);
+    expect(program[0].target).toBe(RASK_RESET_PC + 8);
+    expect(simulation.current.registers[1]).toBe(RESET_LINK + 4);
     expect(simulation.current.registers[2]).toBe(0);
     expect(simulation.current.registers[3]).toBe(7);
   });
 
   it("executes jalr as register-based control flow and writes pc plus 4", () => {
     const program = assembled(`
-addi x2, x0, 16
+lui x2, 0x80000
+addi x2, x2, 16
 jalr x1, 0(x2)
 addi x3, x0, 99
-addi x4, x0, 99
 target:
 addi x5, x0, 7
 `);
@@ -137,9 +139,8 @@ addi x5, x0, 7
     expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "flush")).toBe(
       true,
     );
-    expect(simulation.current.registers[1]).toBe(8);
+    expect(simulation.current.registers[1]).toBe(RESET_LINK + 12);
     expect(simulation.current.registers[3]).toBe(0);
-    expect(simulation.current.registers[4]).toBe(0);
     expect(simulation.current.registers[5]).toBe(7);
   });
 
@@ -152,14 +153,16 @@ addi x3, x0, 99
 target:
 addi x4, x0, 7
 `),
-        { registers: { 2: 9 } },
+        { registers: { 2: RESET_LINK + 9 } },
       ),
     );
-    expect(clearBitZero.current.registers[1]).toBe(4);
+    expect(clearBitZero.current.registers[1]).toBe(RESET_LINK + 4);
     expect(clearBitZero.current.registers[3]).toBe(0);
     expect(clearBitZero.current.registers[4]).toBe(7);
 
-    const misaligned = runSimulation(createSimulation(assembled("jalr x1, 0(x2)\n"), { registers: { 2: 11 } }));
+    const misaligned = runSimulation(
+      createSimulation(assembled("jalr x1, 0(x2)\n"), { registers: { 2: RESET_LINK + 11 } }),
+    );
     expect(misaligned.current.halted).toBe(true);
     expect(misaligned.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(
       true,
@@ -175,12 +178,12 @@ addi x4, x0, 99
 target:
 addi x5, x0, 1
 `);
-    const simulation = runSimulation(createSimulation(program, { memory: { 16: 16, 17: 0, 18: 0, 19: 0 } }));
+    const simulation = runSimulation(createSimulation(program, { memory: { 16: 16, 17: 0, 18: 0, 19: 128 } }));
 
     expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
       true,
     );
-    expect(simulation.current.registers[3]).toBe(12);
+    expect(simulation.current.registers[3]).toBe(RESET_LINK + 12);
     expect(simulation.current.registers[4]).toBe(0);
     expect(simulation.current.registers[5]).toBe(1);
   });
@@ -192,7 +195,7 @@ auipc x2, 1
 `);
     const simulation = runSimulation(createSimulation(program));
     expect(simulation.current.registers[1]).toBe(-2147483648);
-    expect(simulation.current.registers[2]).toBe(0x1004);
+    expect(simulation.current.registers[2]).toBe(RESET_LINK + 0x1004);
   });
 
   it("uses instruction forms for writeback and source register behavior", () => {
@@ -217,7 +220,7 @@ addi x6, x0, 1
     expect(commitEvents.some((event) => event.instructionId === program[4]?.id)).toBe(true);
     expect(commitEvents.some((event) => event.instructionId === program[5]?.id)).toBe(true);
     expect(commitEvents.some((event) => event.instructionId === program[6]?.id)).toBe(false);
-    expect(simulation.current.registers[5]).toBe(24);
+    expect(simulation.current.registers[5]).toBe(RESET_LINK + 24);
   });
 
   it("does not treat jal as a load-use source register consumer", () => {
@@ -233,7 +236,7 @@ addi x4, x0, 1
     expect(simulation.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "stall")).toBe(
       false,
     );
-    expect(simulation.current.registers[3]).toBe(12);
+    expect(simulation.current.registers[3]).toBe(RESET_LINK + 12);
   });
 
   it("wraps ALU results to 32 bits", () => {

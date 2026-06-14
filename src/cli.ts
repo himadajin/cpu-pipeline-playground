@@ -19,7 +19,7 @@ if (!assembled.ok) {
   process.exit(1);
 }
 
-let simulation = createSimulation(assembled.instructions);
+let simulation = createSimulation(assembled.executionImage);
 for (let index = 0; index < maxCycles && !simulation.current.halted; index += 1) {
   simulation = stepSimulation(simulation);
   const snapshot = simulation.current;

@@ -3,6 +3,7 @@ type Brand<T, Name extends string> = T & { readonly __brand: Name };
 export type RegisterIndex = Brand<number, "RegisterIndex">;
 export type ByteAddress = Brand<number, "ByteAddress">;
 export type ByteValue = Brand<number, "ByteValue">;
+export type InstructionWord = Brand<number, "InstructionWord">;
 export type Int32 = Brand<number, "Int32">;
 export type Signed12Immediate = Brand<number, "Signed12Immediate">;
 export type ShiftAmountImmediate = Brand<number, "ShiftAmountImmediate">;
@@ -11,6 +12,8 @@ export type Upper20Immediate = Brand<number, "Upper20Immediate">;
 export type LabelTable = Record<string, ByteAddress>;
 export type ByteMemory = Record<number, ByteValue>;
 export type RegisterFile = Int32[];
+
+export const RASK_RESET_PC = 0x80000000;
 
 export type Opcode =
   | "add"
@@ -152,8 +155,23 @@ export interface AssembleError {
 export interface AssembleResult {
   ok: boolean;
   instructions: Instruction[];
+  executionImage: ExecutionImage;
   labels: LabelTable;
   errors: AssembleError[];
+}
+
+export interface ExecutionImageInstruction {
+  address: ByteAddress;
+  word: InstructionWord;
+  instruction: Instruction;
+  source: SourceLine;
+  expandedFrom?: SourceLine;
+}
+
+export interface ExecutionImage {
+  baseAddress: ByteAddress;
+  instructions: ExecutionImageInstruction[];
+  instructionMemory: Record<number, ExecutionImageInstruction>;
 }
 
 export interface PipelineEvent {
@@ -181,6 +199,7 @@ export interface MemoryDiff {
 export interface StageSlot {
   instructionId: number;
   pc: ByteAddress;
+  instructionWord: InstructionWord;
   instruction: Instruction;
   result?: Int32;
   address?: ByteAddress;
@@ -214,6 +233,7 @@ export interface CycleSnapshot {
 }
 
 export interface SimulationState {
+  executionImage: ExecutionImage;
   program: Instruction[];
   history: CycleSnapshot[];
   current: CycleSnapshot;

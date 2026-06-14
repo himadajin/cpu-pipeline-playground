@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assemble, instructionSet } from "../../src/core";
+import { assemble, instructionSet, RASK_RESET_PC } from "../../src/core";
 
 describe("assembler", () => {
   it("assembles the initial instruction subset", () => {
@@ -63,13 +63,23 @@ nop
   it("resolves labels to byte addresses", () => {
     const result = assemble("first:\naddi x1, x0, 1\nsecond:\naddi x2, x0, 2\n");
     expect(result.errors).toEqual([]);
-    expect(result.labels).toEqual({ first: 0, second: 4 });
+    expect(result.labels).toEqual({ first: RASK_RESET_PC, second: RASK_RESET_PC + 4 });
+    expect(result.executionImage.baseAddress).toBe(RASK_RESET_PC);
+    expect(result.executionImage.instructions.map((instruction) => instruction.address)).toEqual([
+      RASK_RESET_PC,
+      RASK_RESET_PC + 4,
+    ]);
   });
 
   it("normalizes nop to addi x0, x0, 0", () => {
     const result = assemble("nop\n");
     expect(result.errors).toEqual([]);
     expect(result.instructions[0]).toMatchObject({ op: "addi", rd: 0, rs1: 0, imm: 0, text: "nop" });
+    expect(result.executionImage.instructions[0]).toMatchObject({
+      address: RASK_RESET_PC,
+      word: 0x00000013,
+      expandedFrom: { line: 1, text: "nop" },
+    });
   });
 
   it("validates signed 12-bit immediates for I-type ALU and memory offsets", () => {

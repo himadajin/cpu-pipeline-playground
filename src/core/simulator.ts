@@ -2,7 +2,9 @@ import type {
   CycleSnapshot,
   ByteAddress,
   ByteMemory,
+  ExecutionImage,
   Instruction,
+  InstructionWord,
   Int32,
   MemoryDiff,
   PipelineEvent,
@@ -16,13 +18,26 @@ import type {
   TimelineCell,
   SimulationInitialState,
 } from "./types";
+import { createExecutionImage } from "./assembler";
 import { destinationRegister, sourceRegisters } from "./instructionMetadata";
-import { toByteAddress, toByteValue, toInt32, toRegisterIndex, toSigned12Immediate, toUint32 } from "./numbers";
+import {
+  toByteAddress,
+  toByteValue,
+  toInstructionWord,
+  toInt32,
+  toRegisterIndex,
+  toSigned12Immediate,
+  toUint32,
+} from "./numbers";
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
 const INSTRUCTION_SIZE_BYTES = 4;
 
-export function createSimulation(program: Instruction[], initialState: SimulationInitialState = {}): SimulationState {
+export function createSimulation(
+  input: ExecutionImage | Instruction[],
+  initialState: SimulationInitialState = {},
+): SimulationState {
+  const executionImage = Array.isArray(input) ? createExecutionImage(input) : input;
   const registers: RegisterFile = Array.from({ length: 32 }, () => toInt32(0));
   for (const [register, value] of Object.entries(initialState.registers ?? {})) {
     const index = Number(register);
@@ -34,7 +49,7 @@ export function createSimulation(program: Instruction[], initialState: Simulatio
 
   const current: CycleSnapshot = {
     cycle: 0,
-    pc: toByteAddress(0),
+    pc: executionImage.baseAddress,
     stages: emptyStages(),
     registers,
     memory: normalizeInitialMemory(initialState.memory ?? {}),
@@ -42,9 +57,14 @@ export function createSimulation(program: Instruction[], initialState: Simulatio
     registerDiffs: [],
     memoryDiffs: [],
     timeline: [],
-    halted: program.length === 0,
+    halted: executionImage.instructions.length === 0,
   };
-  return { program, history: [current], current };
+  return {
+    executionImage,
+    program: executionImage.instructions.map((entry) => entry.instruction),
+    history: [current],
+    current,
+  };
 }
 
 export function stepBackSimulation(state: SimulationState): SimulationState {
@@ -128,7 +148,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
   if (flush) {
     pc = exOutput?.nextPc ?? previous.pc;
   } else if (!stall && !memOutput?.halted) {
-    const fetched = fetchInstruction(state.program, previous.pc);
+    const fetched = fetchInstruction(state.executionImage, previous.pc);
     nextStages.IF = fetched;
     pc = fetched && !fetched.halted ? toByteAddress(previous.pc + INSTRUCTION_SIZE_BYTES) : previous.pc;
   }
@@ -137,8 +157,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
   const timeline = buildTimeline(cycle, nextStages, events);
   const halted =
     Boolean(exOutput?.halted || memOutput?.halted || nextStages.IF?.halted) ||
-    ((pc < 0 || pc >= state.program.length * INSTRUCTION_SIZE_BYTES) &&
-      STAGES.every((stage) => nextStages[stage] === null));
+    (isOutsideInstructionImage(state.executionImage, pc) && STAGES.every((stage) => nextStages[stage] === null));
   const current: CycleSnapshot = {
     cycle,
     pc,
@@ -163,11 +182,12 @@ function cloneStages(stages: StageSlots): StageSlots {
   return Object.fromEntries(STAGES.map((stage) => [stage, stages[stage] ? { ...stages[stage]! } : null])) as StageSlots;
 }
 
-function fetchInstruction(program: Instruction[], pc: ByteAddress): StageSlot | null {
+function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress): StageSlot | null {
   if (pc % INSTRUCTION_SIZE_BYTES !== 0) {
     return {
       instructionId: -1,
       pc,
+      instructionWord: toInstructionWord(0),
       instruction: {
         id: -1,
         op: "addi",
@@ -180,9 +200,14 @@ function fetchInstruction(program: Instruction[], pc: ByteAddress): StageSlot | 
       halted: true,
     };
   }
-  const instruction = program[pc / INSTRUCTION_SIZE_BYTES];
-  if (!instruction) return null;
-  return { instructionId: instruction.id, pc, instruction };
+  const fetched = executionImage.instructionMemory[pc];
+  if (!fetched) return null;
+  return { instructionId: fetched.instruction.id, pc, instructionWord: fetched.word, instruction: fetched.instruction };
+}
+
+function isOutsideInstructionImage(executionImage: ExecutionImage, pc: ByteAddress): boolean {
+  const endAddress = executionImage.baseAddress + executionImage.instructions.length * INSTRUCTION_SIZE_BYTES;
+  return pc < executionImage.baseAddress || pc >= endAddress;
 }
 
 function commitWriteback(
@@ -508,7 +533,8 @@ function runExecute(
       return { result: toInt32(slot.pc + INSTRUCTION_SIZE_BYTES), taken: true, nextPc: slot.instruction.target };
     case "jalr": {
       const a = read(slot.instruction.rs1);
-      const nextPc = toByteAddress(toInt32(a + slot.instruction.imm) & ~1);
+      const target = toUint32(a + slot.instruction.imm);
+      const nextPc = toByteAddress(target - (target % 2));
       if (!isAlignedInstructionAddress(nextPc)) {
         events.push(
           errorEvent(cycle, slot, `${slot.instruction.text} cannot jump to misaligned byte address ${nextPc}.`),

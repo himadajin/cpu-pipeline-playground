@@ -15,5 +15,6 @@ export {
 export { toHex32, toInt32, toUint32 } from "./numbers";
 export { createSimulation, stepSimulation, stepBackSimulation, runSimulation } from "./simulator";
 export { SAMPLE_PROGRAMS } from "./samples";
+export { RASK_RESET_PC } from "./types";
 export type * from "./instructionMetadata";
 export type * from "./types";

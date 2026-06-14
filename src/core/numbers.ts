@@ -1,6 +1,7 @@
 import type {
   ByteAddress,
   ByteValue,
+  InstructionWord,
   Int32,
   RegisterIndex,
   ShiftAmountImmediate,
@@ -22,6 +23,10 @@ export function toHex32(value: number): string {
 
 export function toByteValue(value: number): ByteValue {
   return (value & 0xff) as ByteValue;
+}
+
+export function toInstructionWord(value: number): InstructionWord {
+  return (value >>> 0) as InstructionWord;
 }
 
 export function toByteAddress(value: number): ByteAddress {

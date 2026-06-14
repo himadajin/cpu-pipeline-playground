@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { RASK_RESET_PC } from "../../src/core";
 import { listFixtureIds, resolveFixture } from "./manifest";
 import { type ResolvedOracleFixture, type SignatureLine } from "./types";
 import { formatSignature, normalizeAddress, parseSignature } from "./signature";
@@ -146,7 +147,7 @@ function normalizeQemuRegisterValue(value: string, fixture: ResolvedOracleFixtur
   const textEnd = oracleTestBase + instructionCount * 4 + 4;
 
   if (parsed >= oracleTestBase && parsed <= textEnd && (parsed - oracleTestBase) % 4 === 0) {
-    return `0x${(parsed - oracleTestBase).toString(16).padStart(8, "0")}`;
+    return `0x${((RASK_RESET_PC + parsed - oracleTestBase) >>> 0).toString(16).padStart(8, "0")}`;
   }
 
   return value;

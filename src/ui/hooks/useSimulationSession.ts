@@ -11,7 +11,7 @@ import {
 
 export function createSimulationForSource(source: string) {
   const result = assemble(source);
-  return createSimulation(result.ok ? result.instructions : []);
+  return createSimulation(result.ok ? result.executionImage : []);
 }
 
 interface SimulationSessionState {
@@ -64,7 +64,7 @@ export function useSimulationSession({ programId, source }: { programId: string;
     if (!result.ok) return;
     setState({
       programId,
-      simulation: createSimulation(result.instructions),
+      simulation: createSimulation(result.executionImage),
       simSource: source,
       selectedCell: null,
     });
@@ -75,9 +75,9 @@ export function useSimulationSession({ programId, source }: { programId: string;
     setState((current) => {
       const baseSimulation =
         current.programId !== programId
-          ? createSimulation(assembled.instructions)
+          ? createSimulation(assembled.executionImage)
           : current.simulation.program.length === 0
-            ? createSimulation(assembled.instructions)
+            ? createSimulation(assembled.executionImage)
             : current.simulation;
 
       return {
