@@ -45,7 +45,7 @@ CPU、ISA、pipeline、address space、MMIO、exit / error / pause、verificatio
 
 ### Outcomes
 
-- CPU 仕様の source of truth が `docs/rask-spec.md` であることが、README、AGENTS.md、design、oracle 関連文書から一貫して参照されている。
+- CPU 仕様の source of truth が `docs/rask-spec.md` であることが、README が存在する場合は README、AGENTS.md、design、oracle 関連文書から一貫して参照されている。
 - `docs/design.md` は product / UX 方針に集中し、CPU 詳細の重複を持たない。
 - `docs/design-qemu-reference-testing.md` は `rask` の verification contract に従属し、QEMU と timing oracle の役割を混同しない。
 - `docs/rv32i-roadmap.md` は、実装順序と作業境界の文書として読める。

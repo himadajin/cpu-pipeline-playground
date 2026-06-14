@@ -1,10 +1,10 @@
 # QEMU Reference Testing
 
-This directory contains the local oracle harness for comparing this app's assembler and simulator against RV32I behavior from a RISC-V embedded toolchain and QEMU.
+This directory contains the local oracle harness for comparing this app's assembler and simulator against RV32I functional behavior from a RISC-V embedded toolchain and QEMU.
 
-See `../docs/design-qemu-reference-testing.md` for the reference testing design and `../docs/glossary.md` for terms such as oracle, fixture, manifest, harness, producer, comparator, and observable state signature.
+CPU behavior, MMIO, exit / error / pause, retire log, and pipeline occupancy are defined by `../docs/rask-spec.md`. See `../docs/design-qemu-reference-testing.md` for the reference testing design and `../docs/glossary.md` for terms such as oracle, fixture, manifest, harness, producer, comparator, and observable state signature.
 
-QEMU is the oracle for instruction semantics, not for pipeline timing, forwarding events, stall shape, flush visualization, or UI behavior. Those app-specific behaviors stay covered by the normal core, UI, and e2e tests.
+QEMU is a functional oracle for final observable state, not an authority for `rask` pipeline timing, retire log format, pipeline occupancy, stall shape, flush visualization, or UI behavior. Timing expectations come from `../docs/rask-spec.md` and hand-written pipeline occupancy golden data.
 
 ## Fixture Principles
 

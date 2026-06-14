@@ -54,4 +54,4 @@ For CPU semantics, pipeline timing, assembler behavior, or oracle fixtures, foll
 
 - Preserve user edits in the worktree. If unrelated files are dirty, leave them alone.
 - Avoid destructive git commands unless the user explicitly asks for them.
-- Do not commit generated folders such as `node_modules/`, `dist/`, `coverage/`, `playwright-report/`, or `test-results/`.
+- Do not commit generated folders such as `node_modules/`, `dist/`, `coverage/`, `playwright-report/`, `test-results/`, `oracle/generated/`, or `oracle/signatures/`.
