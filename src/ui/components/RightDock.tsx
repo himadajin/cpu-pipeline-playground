@@ -15,6 +15,7 @@ export function RightDock({
   onResizeStart,
   selectedInstruction,
   selectedSnapshot,
+  selectedTimelineCell,
   selectedEvents,
   current,
 }: {
@@ -25,6 +26,7 @@ export function RightDock({
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   selectedInstruction: Instruction | null | undefined;
   selectedSnapshot: CycleSnapshot | undefined;
+  selectedTimelineCell: CycleSnapshot["timeline"][number] | null;
   selectedEvents: PipelineEvent[];
   current: CycleSnapshot;
 }) {
@@ -93,6 +95,7 @@ export function RightDock({
           <InspectorPanel
             selectedInstruction={selectedInstruction}
             selectedSnapshot={selectedSnapshot}
+            selectedTimelineCell={selectedTimelineCell}
             selectedEvents={selectedEvents}
           />
         )}
@@ -106,27 +109,30 @@ export function RightDock({
 function InspectorPanel({
   selectedInstruction,
   selectedSnapshot,
+  selectedTimelineCell,
   selectedEvents,
 }: {
   selectedInstruction: Instruction | null | undefined;
   selectedSnapshot: CycleSnapshot | undefined;
+  selectedTimelineCell: CycleSnapshot["timeline"][number] | null;
   selectedEvents: PipelineEvent[];
 }) {
   return (
     <section className="inspector-panel">
-      {selectedInstruction ? (
+      {selectedTimelineCell ? (
         <div className="inspector-section">
-          <h2>{selectedInstruction.text}</h2>
+          <h2>{selectedInstruction?.text ?? `pc 0x${formatHex(selectedTimelineCell.pc)}`}</h2>
           <p className="muted">
-            line {selectedInstruction.source.line}, cycle {selectedSnapshot?.cycle ?? "-"}
+            S{selectedTimelineCell.seqId}, {selectedTimelineCell.stage}, cycle {selectedSnapshot?.cycle ?? "-"}
+            {selectedInstruction ? `, line ${selectedInstruction.source.line}` : ""}
           </p>
           <EventList
             events={selectedEvents}
-            emptyText="No event is attached to this instruction in the selected cycle."
+            emptyText="No event is attached to this dynamic instruction in the selected cycle."
           />
         </div>
       ) : (
-        <p className="muted">Select a timeline cell to inspect hazards, forwarding, flushes, and diffs.</p>
+        <p className="muted">Select a timeline cell to inspect stalls, flushes, retires, and diffs.</p>
       )}
     </section>
   );
@@ -199,6 +205,10 @@ function formatValue(value: number): string {
 
 function formatByte(value: number): string {
   return `0x${(value & 0xff).toString(16).padStart(2, "0")}`;
+}
+
+function formatHex(value: number): string {
+  return (value >>> 0).toString(16).padStart(8, "0");
 }
 
 function groupMemoryWords(memory: Record<number, number>): Array<{ address: number; bytes: number[]; value: number }> {

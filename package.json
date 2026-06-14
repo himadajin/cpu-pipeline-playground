@@ -17,7 +17,7 @@
     "oracle:sim": "tsx scripts/oracle/run-simulator.ts",
     "oracle:qemu": "tsx scripts/oracle/run-qemu.ts",
     "oracle:compare": "tsx scripts/oracle/compare-signatures.ts",
-    "oracle:test": "npm run oracle:sim && npm run oracle:qemu && npm run oracle:compare"
+    "oracle:test": "tsx scripts/oracle/run-oracle-test.ts"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.4",

@@ -81,8 +81,8 @@ describe("useSimulationSession", () => {
     );
 
     act(() => result.current.actions.step());
-    act(() => result.current.actions.selectCell({ cycle: 1, instructionId: 0 }));
-    expect(result.current.selectedCell).toEqual({ cycle: 1, instructionId: 0 });
+    act(() => result.current.actions.selectCell({ cycle: 1, seqId: 0, instructionId: 0 }));
+    expect(result.current.selectedCell).toEqual({ cycle: 1, seqId: 0, instructionId: 0 });
 
     rerender({ programId: "b", source: "addi x4, x0, 4\n" });
 
@@ -90,6 +90,29 @@ describe("useSimulationSession", () => {
     expect(result.current.simulation.program).toHaveLength(1);
     expect(result.current.selectedCell).toBeNull();
     expect(result.current.invalidated).toBe(false);
+  });
+
+  it("keeps timeline selection tied to a dynamic seqId", () => {
+    const { result } = renderHook(() =>
+      useSimulationSession({
+        programId: "a",
+        source: "jal x0, target\naddi x1, x0, 1\ntarget:\naddi x2, x0, 2\n",
+      }),
+    );
+
+    act(() => {
+      for (let index = 0; index < 10 && !result.current.simulation.current.halted; index += 1) {
+        result.current.actions.step();
+      }
+    });
+
+    const targetCells = result.current.timelineCells.filter((cell) => cell.instructionId === 2 && cell.stage === "IF");
+    expect(targetCells.map((cell) => cell.seqId)).toEqual([2, 3]);
+
+    act(() => result.current.actions.selectCell(targetCells[1]!));
+
+    expect(result.current.selectedCell).toMatchObject({ seqId: 3, instructionId: 2 });
+    expect(result.current.selectedTimelineCell).toMatchObject({ seqId: 3, stage: "IF" });
   });
 
   it("can step immediately after switching away from a halted program", () => {

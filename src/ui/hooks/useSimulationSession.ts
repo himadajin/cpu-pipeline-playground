@@ -11,7 +11,7 @@ import {
 
 export function createSimulationForSource(source: string) {
   const result = assemble(source);
-  return createSimulation(result.ok ? result.instructions : []);
+  return createSimulation(result.ok ? result.executionImage : []);
 }
 
 interface SimulationSessionState {
@@ -40,13 +40,15 @@ export function useSimulationSession({ programId, source }: { programId: string;
   const snapshots = simulation.history;
   const timelineCells = snapshots.flatMap((snapshot) => snapshot.timeline);
   const selectedInstruction = selectedCell
-    ? assembled.instructions.find((instruction) => instruction.id === selectedCell.instructionId)
+    ? simulation.program.find((instruction) => instruction.id === selectedCell.instructionId)
     : null;
   const selectedSnapshot = selectedCell
     ? snapshots.find((snapshot) => snapshot.cycle === selectedCell.cycle)
     : undefined;
-  const selectedEvents =
-    selectedSnapshot?.events.filter((event) => event.instructionId === selectedCell?.instructionId) ?? [];
+  const selectedTimelineCell = selectedCell
+    ? (selectedSnapshot?.timeline.find((cell) => cell.seqId === selectedCell.seqId) ?? null)
+    : null;
+  const selectedEvents = selectedSnapshot?.events.filter((event) => event.seqId === selectedCell?.seqId) ?? [];
   const activeEventSnapshot: CycleSnapshot = selectedSnapshot ?? simulation.current;
 
   useEffect(() => {
@@ -64,7 +66,7 @@ export function useSimulationSession({ programId, source }: { programId: string;
     if (!result.ok) return;
     setState({
       programId,
-      simulation: createSimulation(result.instructions),
+      simulation: createSimulation(result.executionImage),
       simSource: source,
       selectedCell: null,
     });
@@ -75,9 +77,9 @@ export function useSimulationSession({ programId, source }: { programId: string;
     setState((current) => {
       const baseSimulation =
         current.programId !== programId
-          ? createSimulation(assembled.instructions)
+          ? createSimulation(assembled.executionImage)
           : current.simulation.program.length === 0
-            ? createSimulation(assembled.instructions)
+            ? createSimulation(assembled.executionImage)
             : current.simulation;
 
       return {
@@ -116,6 +118,7 @@ export function useSimulationSession({ programId, source }: { programId: string;
     selectedCell,
     selectedInstruction,
     selectedSnapshot,
+    selectedTimelineCell,
     selectedEvents,
     activeEventSnapshot,
     invalidated,

@@ -1,10 +1,10 @@
 # QEMU Reference Testing
 
-This directory contains the local oracle harness for comparing this app's assembler and simulator against RV32I behavior from a RISC-V embedded toolchain and QEMU.
+This directory contains the local oracle harness for comparing this app's assembler and simulator against RV32I functional behavior from a RISC-V embedded toolchain and QEMU.
 
-See `../docs/design-qemu-reference-testing.md` for the reference testing design and `../docs/glossary.md` for terms such as oracle, fixture, manifest, harness, producer, comparator, and observable state signature.
+CPU behavior, MMIO, exit / error / pause, retire log, and pipeline occupancy are defined by `../docs/rask-spec.md`. See `../docs/design-qemu-reference-testing.md` for the reference testing design and `../docs/glossary.md` for terms such as oracle, fixture, manifest, harness, producer, comparator, and observable state signature.
 
-QEMU is the oracle for instruction semantics, not for pipeline timing, forwarding events, stall shape, flush visualization, or UI behavior. Those app-specific behaviors stay covered by the normal core, UI, and e2e tests.
+QEMU is a functional oracle for final observable state, not an authority for `rask` pipeline timing, retire log format, pipeline occupancy, stall shape, flush visualization, or UI behavior. Timing expectations come from `../docs/rask-spec.md` and hand-written pipeline occupancy golden data.
 
 ## Fixture Principles
 
@@ -22,6 +22,14 @@ When test coverage changes, prefer fixtures that explain the behavior they prote
 
 Producers write text signatures as `key=value` lines. The comparator only reads these signatures and does not depend on QEMU, ELF, Docker, or simulator internals.
 
+Comparator failures include a classification for each mismatched key:
+
+- `fixture-selection`: the two producers did not run or report the same fixture.
+- `register-observable-state`: a compared register differs; first check simulator semantics, register normalization, then QEMU register capture.
+- `memory-observable-state`: a compared RAM word differs; first check simulator memory semantics, signature normalization, then QEMU memory capture.
+- `producer-output`: one producer did not emit a requested key; check manifest compare sets and producer signature selection.
+- `signature-shape`: the key is outside the current schema; check signature formatting before changing CPU behavior.
+
 The current harness initializes `x31` to `0x80010000`, the data region used by memory fixtures and signature capture. Fixture code should treat that value as an initial register supplied by the manifest, not as a QEMU directive.
 
 ## Commands
@@ -38,4 +46,4 @@ npm run oracle:test
 - `@xpack-dev-tools/riscv-none-elf-gcc@15.2.0-1.1`
 - `@xpack-dev-tools/qemu-riscv@9.2.4-1.1`
 
-The host only needs Docker and the normal Node project dependencies.
+The host only needs Docker and the normal Node project dependencies. `npm run oracle:test` always runs the simulator producer first. If Docker or the Docker daemon is unavailable, it explicitly skips the QEMU producer and comparator, then exits successfully after reporting the skip reason. In that case, `npm run test` remains the substitute check for the simulator producer and comparator behavior, but it is not a substitute for QEMU comparison on a machine where Docker is available.

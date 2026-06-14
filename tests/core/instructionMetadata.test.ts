@@ -49,6 +49,9 @@ const EXPECTED_OPCODES: Opcode[] = [
   "slli",
   "srli",
   "srai",
+  "fence",
+  "ecall",
+  "ebreak",
 ];
 
 describe("instruction metadata", () => {

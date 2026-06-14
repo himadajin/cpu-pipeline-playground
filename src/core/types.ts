@@ -3,6 +3,7 @@ type Brand<T, Name extends string> = T & { readonly __brand: Name };
 export type RegisterIndex = Brand<number, "RegisterIndex">;
 export type ByteAddress = Brand<number, "ByteAddress">;
 export type ByteValue = Brand<number, "ByteValue">;
+export type InstructionWord = Brand<number, "InstructionWord">;
 export type Int32 = Brand<number, "Int32">;
 export type Signed12Immediate = Brand<number, "Signed12Immediate">;
 export type ShiftAmountImmediate = Brand<number, "ShiftAmountImmediate">;
@@ -11,6 +12,13 @@ export type Upper20Immediate = Brand<number, "Upper20Immediate">;
 export type LabelTable = Record<string, ByteAddress>;
 export type ByteMemory = Record<number, ByteValue>;
 export type RegisterFile = Int32[];
+
+export const RASK_RESET_PC = 0x80000000;
+export const RASK_RAM_BASE = RASK_RESET_PC;
+export const RASK_RAM_SIZE_BYTES = 4 * 1024 * 1024;
+export const RASK_RAM_LIMIT_EXCLUSIVE = RASK_RAM_BASE + RASK_RAM_SIZE_BYTES;
+export const RASK_UART_DATA_ADDRESS = 0x10000000;
+export const RASK_EXIT_DEVICE_ADDRESS = 0x00100000;
 
 export type Opcode =
   | "add"
@@ -49,10 +57,13 @@ export type Opcode =
   | "sra"
   | "slli"
   | "srli"
-  | "srai";
+  | "srai"
+  | "fence"
+  | "ecall"
+  | "ebreak";
 
 export type StageName = "IF" | "ID" | "EX" | "MEM" | "WB";
-export type EventKind = "stall" | "flush" | "forward" | "commit" | "memory" | "branch" | "error";
+export type EventKind = "stall" | "flush" | "retire" | "memory" | "branch" | "error";
 
 export interface SourceLine {
   line: number;
@@ -84,6 +95,7 @@ export type STypeOpcode = "sb" | "sh" | "sw";
 export type BTypeOpcode = "beq" | "bne" | "blt" | "bge" | "bltu" | "bgeu";
 export type JTypeOpcode = "jal";
 export type UTypeOpcode = "lui" | "auipc";
+export type SystemOpcode = "fence" | "ecall" | "ebreak";
 
 export interface RTypeInstruction extends InstructionBase {
   op: RTypeOpcode;
@@ -134,6 +146,10 @@ export interface UTypeInstruction extends InstructionBase {
   imm: Upper20Immediate;
 }
 
+export interface SystemInstruction extends InstructionBase {
+  op: SystemOpcode;
+}
+
 export type Instruction =
   | RTypeInstruction
   | ITypeInstruction
@@ -141,7 +157,8 @@ export type Instruction =
   | STypeInstruction
   | BTypeInstruction
   | JTypeInstruction
-  | UTypeInstruction;
+  | UTypeInstruction
+  | SystemInstruction;
 
 export interface AssembleError {
   line: number;
@@ -152,13 +169,30 @@ export interface AssembleError {
 export interface AssembleResult {
   ok: boolean;
   instructions: Instruction[];
+  executionImage: ExecutionImage;
   labels: LabelTable;
   errors: AssembleError[];
+}
+
+export interface ExecutionImageInstruction {
+  id: number;
+  address: ByteAddress;
+  word: InstructionWord;
+  instruction?: Instruction;
+  source: SourceLine;
+  expandedFrom?: SourceLine;
+}
+
+export interface ExecutionImage {
+  baseAddress: ByteAddress;
+  instructions: ExecutionImageInstruction[];
+  instructionMemory: Record<number, ExecutionImageInstruction>;
 }
 
 export interface PipelineEvent {
   id: string;
   cycle: number;
+  seqId?: number;
   instructionId?: number;
   kind: EventKind;
   label: string;
@@ -178,23 +212,85 @@ export interface MemoryDiff {
   after: ByteValue;
 }
 
+export interface ExitRequest {
+  code: number;
+  success: boolean;
+}
+
+export type DecodeErrorKind = "undef-instr" | "ecall";
+export type SimulatorErrorKind =
+  | "fetch-unmapped"
+  | "fetch-misaligned"
+  | DecodeErrorKind
+  | "mem-unmapped"
+  | "mem-misaligned"
+  | "mmio-violation";
+
+export interface DecodeError {
+  kind: DecodeErrorKind;
+  message: string;
+}
+
+export interface SimulatorError {
+  kind: SimulatorErrorKind;
+  message: string;
+}
+
+export type MemoryEffectWidth = "b" | "h" | "w";
+
+export interface MemoryEffect {
+  direction: "load" | "store";
+  width: MemoryEffectWidth;
+  address: ByteAddress;
+  value: number;
+}
+
+export interface RetireLogEntry {
+  pc: ByteAddress;
+  instructionWord: InstructionWord | null;
+  instruction: Instruction;
+  memoryEffect?: MemoryEffect;
+  register?: RegisterIndex;
+  registerValue?: Int32;
+}
+
+export type TerminalRecord =
+  | { kind: "exit"; code: number }
+  | { kind: "error"; errorKind: SimulatorErrorKind; pc: ByteAddress; instructionWord: InstructionWord | null };
+
 export interface StageSlot {
+  seqId: number;
   instructionId: number;
   pc: ByteAddress;
+  instructionWord: InstructionWord | null;
   instruction: Instruction;
+  decodeError?: DecodeError;
+  error?: SimulatorError;
   result?: Int32;
   address?: ByteAddress;
   storeValue?: Int32;
   loadedValue?: Int32;
+  memoryEffect?: MemoryEffect;
   taken?: boolean;
   nextPc?: ByteAddress;
-  halted?: boolean;
+  exitRequest?: ExitRequest;
+  isEbreak?: boolean;
 }
 
 export type StageSlots = Record<StageName, StageSlot | null>;
 
+export interface PipelineLatches {
+  fetch: StageSlot | null;
+  ifId: StageSlot | null;
+  idEx: StageSlot | null;
+  exMem: StageSlot | null;
+  memWb: StageSlot | null;
+}
+
 export interface TimelineCell {
   cycle: number;
+  seqId: number;
+  pc: ByteAddress;
   instructionId: number;
   stage: StageName;
   events: PipelineEvent[];
@@ -203,17 +299,25 @@ export interface TimelineCell {
 export interface CycleSnapshot {
   cycle: number;
   pc: ByteAddress;
+  nextSeqId: number;
+  latches: PipelineLatches;
   stages: StageSlots;
   registers: RegisterFile;
   memory: ByteMemory;
+  consoleOutput: ByteValue[];
   events: PipelineEvent[];
+  retireLog: RetireLogEntry[];
+  terminalRecord?: TerminalRecord;
   registerDiffs: RegisterDiff[];
   memoryDiffs: MemoryDiff[];
   timeline: TimelineCell[];
+  occupancyTable: string[];
+  paused: boolean;
   halted: boolean;
 }
 
 export interface SimulationState {
+  executionImage: ExecutionImage;
   program: Instruction[];
   history: CycleSnapshot[];
   current: CycleSnapshot;
@@ -233,5 +337,6 @@ export interface ProgramDocument {
 
 export interface SelectedCell {
   cycle: number;
+  seqId: number;
   instructionId: number;
 }

@@ -652,7 +652,7 @@ input {
 
 .timeline-row {
   display: grid;
-  grid-template-columns: 112px repeat(var(--cycles, 301), 72px);
+  grid-template-columns: 148px repeat(var(--cycles, 301), 72px);
   grid-auto-columns: 72px;
 }
 
@@ -710,6 +710,11 @@ input {
     monospace;
   overflow: hidden;
   white-space: nowrap;
+}
+
+.seq-number {
+  color: var(--accent-strong);
+  font-weight: 700;
 }
 
 .line-number {
@@ -792,16 +797,9 @@ input {
   background: var(--panel);
 }
 
-.event-marker.commit {
+.event-marker.retire {
   border-color: var(--accent);
   background: var(--accent);
-}
-
-.event-marker.forward {
-  width: 9px;
-  height: 5px;
-  border-color: var(--accent-border);
-  border-radius: 999px;
 }
 
 .event-marker.stall {
@@ -865,7 +863,7 @@ input {
   font-size: 12px;
 }
 
-.event-detail.commit {
+.event-detail.retire {
   border-left: 3px solid var(--accent);
 }
 
@@ -876,10 +874,6 @@ input {
 .event-detail.flush {
   text-decoration: line-through;
   text-decoration-thickness: 1px;
-}
-
-.event-detail.forward {
-  font-style: italic;
 }
 
 .diff-row {

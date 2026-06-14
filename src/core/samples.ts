@@ -20,7 +20,7 @@ add x5, x5, x4
     name: "Store and reload",
     updatedAt: 0,
     source: `# Store a temporary value, load it back, then add 8.
-addi x1, x0, 16
+lui x1, 0x80010
 addi x2, x0, 34
 sw x2, 0(x1)
 lw x3, 0(x1)
@@ -62,7 +62,7 @@ bge x1, x2, loop
     name: "Two-word memory sum",
     updatedAt: 0,
     source: `# Add two memory words and store the result.
-addi x1, x0, 32
+lui x1, 0x80010
 addi x2, x0, 7
 addi x3, x0, 11
 sw x2, 0(x1)

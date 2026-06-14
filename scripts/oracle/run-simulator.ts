@@ -24,7 +24,7 @@ for (const fixtureId of targets) {
   }
 
   const simulation = runSimulation(
-    createSimulation(assembled.instructions, {
+    createSimulation(assembled.executionImage, {
       registers: fixture.initialRegisters,
       memory: fixture.initialMemory,
     }),

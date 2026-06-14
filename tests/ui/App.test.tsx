@@ -52,16 +52,16 @@ describe("App", () => {
   it("keeps timeline events as markers and moves event logs to the Events tab", async () => {
     const { container } = render(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
-    for (let index = 0; index < 6; index += 1) {
+    for (let index = 0; index < 10; index += 1) {
       await userEvent.click(screen.getByRole("button", { name: "Step" }));
     }
 
     expect(container.querySelector(".event-marker")).toBeInTheDocument();
     expect(container.querySelector(".event-badge")).not.toBeInTheDocument();
-    expect(screen.queryByText(/commit:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/retire:/)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Events" }));
-    expect(screen.getByText(/writes x1/)).toBeInTheDocument();
+    expect(screen.getByText(/waits for an older writer to retire/)).toBeInTheDocument();
   });
 
   it("shows registers in fixed order and only highlights changed registers", async () => {
@@ -89,21 +89,21 @@ describe("App", () => {
         {
           id: "memory",
           name: "Memory",
-          source: "addi x1, x0, 16\naddi x2, x0, 255\nsw x2, 0(x1)\n",
+          source: "lui x1, 0x80010\naddi x2, x0, 255\nsw x2, 0(x1)\n",
           updatedAt: 0,
         },
       ]),
     );
     const { container } = render(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
-    for (let index = 0; index < 7; index += 1) {
+    for (let index = 0; index < 10; index += 1) {
       await userEvent.click(screen.getByRole("button", { name: "Step" }));
     }
     await userEvent.click(screen.getByRole("button", { name: "Memory" }));
 
-    expect(container).toHaveTextContent("[16] 0x000000ff");
+    expect(container).toHaveTextContent("[2147549184] 0x000000ff");
     expect(container).toHaveTextContent("bytes 0xff 0x00 0x00 0x00");
-    expect(container).toHaveTextContent("[16]: 0x00 -> 0xff");
+    expect(container).toHaveTextContent("[2147549184]: 0x00 -> 0xff");
   });
 
   it("collapses dock areas and reopens them from rails", async () => {

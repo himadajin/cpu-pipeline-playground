@@ -13,8 +13,11 @@ import {
   isRTypeOpcode,
 } from "./instructionMetadata";
 import type { AssembleError, AssembleResult, ByteAddress, Instruction, LabelTable, RegisterIndex } from "./types";
+import { RASK_RESET_PC, type ExecutionImage, type ExecutionImageInstruction } from "./types";
+import { encodeInstruction } from "./instructionCodec";
 
 const INSTRUCTION_SIZE_BYTES = 4;
+const DEFAULT_BASE_ADDRESS = toByteAddress(RASK_RESET_PC);
 const SIGNED_12_MIN = -2048;
 const SIGNED_12_MAX = 2047;
 const B_OFFSET_MIN = -4096;
@@ -73,7 +76,7 @@ export function assemble(source: string): AssembleResult {
   const labels: LabelTable = {};
   const errors: AssembleError[] = [];
   const parsedLines: ParsedLine[] = [];
-  let pc = toByteAddress(0);
+  let pc = DEFAULT_BASE_ADDRESS;
 
   source.split(/\r?\n/).forEach((raw, index) => {
     const line = index + 1;
@@ -106,10 +109,12 @@ export function assemble(source: string): AssembleResult {
     const inst = parseInstruction(parsed, instructions.length, labels, errors);
     if (inst) instructions.push(inst);
   });
+  const executionImage = createExecutionImage(instructions, DEFAULT_BASE_ADDRESS);
 
   return {
     ok: errors.length === 0,
     instructions,
+    executionImage,
     labels,
     errors,
   };
@@ -117,6 +122,32 @@ export function assemble(source: string): AssembleResult {
 
 export function instructionSet(): string[] {
   return [...ASSEMBLER_MNEMONICS];
+}
+
+export function createExecutionImage(
+  instructions: Instruction[],
+  baseAddress: ByteAddress = DEFAULT_BASE_ADDRESS,
+): ExecutionImage {
+  const imageInstructions: ExecutionImageInstruction[] = instructions.map((instruction, index) => {
+    const address = toByteAddress(baseAddress + index * INSTRUCTION_SIZE_BYTES);
+    const expandedFrom =
+      instruction.text.trim().split(/\s+/, 1)[0]?.toLowerCase() !== instruction.op ? instruction.source : undefined;
+    return {
+      id: instruction.id,
+      address,
+      word: encodeInstruction(instruction, address),
+      instruction,
+      source: instruction.source,
+      expandedFrom,
+    };
+  });
+  return {
+    baseAddress,
+    instructions: imageInstructions,
+    instructionMemory: Object.fromEntries(
+      imageInstructions.map((instruction) => [instruction.address, instruction]),
+    ) as Record<number, ExecutionImageInstruction>,
+  };
 }
 
 function parseInstruction(
@@ -162,6 +193,11 @@ function parseInstruction(
   }
 
   const op = mnemonic;
+  if (op === "fence" || op === "ecall" || op === "ebreak") {
+    if (args.length !== 0) return fail(`${op} does not take operands in rask.`);
+    return { ...base, op };
+  }
+
   if (isRTypeOpcode(op)) {
     if (args.length !== 3) return fail(`${op} expects rd, rs1, rs2.`);
     const rd = parseRegister(args[0]);

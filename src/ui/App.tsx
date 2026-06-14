@@ -27,6 +27,7 @@ export function App() {
     selectedEvents,
     selectedInstruction,
     selectedSnapshot,
+    selectedTimelineCell,
     simulation,
     snapshots,
     timelineCells,
@@ -111,6 +112,7 @@ export function App() {
               onResizeStart={workbenchLayout.actions.startRightResize}
               selectedInstruction={selectedInstruction}
               selectedSnapshot={selectedSnapshot}
+              selectedTimelineCell={selectedTimelineCell}
               selectedEvents={selectedEvents}
               current={simulation.current}
             />

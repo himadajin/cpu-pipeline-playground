@@ -2,27 +2,63 @@ import type {
   CycleSnapshot,
   ByteAddress,
   ByteMemory,
+  ByteValue,
+  DecodeError,
+  ExecutionImage,
+  ExecutionImageInstruction,
+  ExitRequest,
   Instruction,
+  InstructionWord,
   Int32,
+  MemoryEffect,
   MemoryDiff,
+  PipelineLatches,
   PipelineEvent,
   RegisterDiff,
   RegisterFile,
   RegisterIndex,
+  RetireLogEntry,
   SimulationState,
+  SimulatorError,
   StageName,
   StageSlot,
   StageSlots,
+  TerminalRecord,
   TimelineCell,
   SimulationInitialState,
 } from "./types";
+import { createExecutionImage } from "./assembler";
+import { decodeInstruction } from "./instructionCodec";
 import { destinationRegister, sourceRegisters } from "./instructionMetadata";
-import { toByteAddress, toByteValue, toInt32, toRegisterIndex, toSigned12Immediate, toUint32 } from "./numbers";
+import { RASK_EXIT_DEVICE_ADDRESS, RASK_RAM_BASE, RASK_RAM_LIMIT_EXCLUSIVE, RASK_UART_DATA_ADDRESS } from "./types";
+import {
+  toHex32,
+  toByteAddress,
+  toByteValue,
+  toInstructionWord,
+  toInt32,
+  toRegisterIndex,
+  toSigned12Immediate,
+  toUint32,
+} from "./numbers";
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
 const INSTRUCTION_SIZE_BYTES = 4;
 
-export function createSimulation(program: Instruction[], initialState: SimulationInitialState = {}): SimulationState {
+interface RunSimulationOptions {
+  stopOnPause?: boolean;
+}
+
+interface RetireOutput {
+  terminalRecord?: TerminalRecord;
+  paused: boolean;
+}
+
+export function createSimulation(
+  input: ExecutionImage | Instruction[],
+  initialState: SimulationInitialState = {},
+): SimulationState {
+  const executionImage = Array.isArray(input) ? createExecutionImage(input) : input;
   const registers: RegisterFile = Array.from({ length: 32 }, () => toInt32(0));
   for (const [register, value] of Object.entries(initialState.registers ?? {})) {
     const index = Number(register);
@@ -34,17 +70,28 @@ export function createSimulation(program: Instruction[], initialState: Simulatio
 
   const current: CycleSnapshot = {
     cycle: 0,
-    pc: toByteAddress(0),
-    stages: emptyStages(),
+    pc: executionImage.baseAddress,
+    nextSeqId: 0,
+    latches: emptyLatches(),
+    stages: projectStages(emptyLatches()),
     registers,
     memory: normalizeInitialMemory(initialState.memory ?? {}),
+    consoleOutput: [],
     events: [],
+    retireLog: [],
     registerDiffs: [],
     memoryDiffs: [],
     timeline: [],
-    halted: program.length === 0,
+    occupancyTable: [],
+    paused: false,
+    halted: executionImage.instructions.length === 0,
   };
-  return { program, history: [current], current };
+  return {
+    executionImage,
+    program: executionImage.instructions.map((entry) => instructionFromImageEntry(entry)),
+    history: [current],
+    current,
+  };
 }
 
 export function stepBackSimulation(state: SimulationState): SimulationState {
@@ -53,12 +100,51 @@ export function stepBackSimulation(state: SimulationState): SimulationState {
   return { ...state, history, current: history[history.length - 1] };
 }
 
-export function runSimulation(state: SimulationState, maxCycles = 300): SimulationState {
+export function runSimulation(
+  state: SimulationState,
+  maxCycles = 300,
+  options: RunSimulationOptions = {},
+): SimulationState {
   let next = state;
   while (!next.current.halted && next.current.cycle < maxCycles) {
     next = stepSimulation(next);
+    if (options.stopOnPause && next.current.paused) break;
   }
   return next;
+}
+
+export function formatRetireLog(snapshot: CycleSnapshot): string {
+  const lines = snapshot.retireLog.map((entry) => {
+    const effects: string[] = [];
+    if (entry.memoryEffect) {
+      effects.push(
+        `${entry.memoryEffect.direction} ${entry.memoryEffect.width} [${formatHex32(entry.memoryEffect.address)}]=${formatData(
+          entry.memoryEffect.width,
+          entry.memoryEffect.value,
+        )}`,
+      );
+    }
+    if (entry.register != null && entry.registerValue != null) {
+      effects.push(`x${String(entry.register).padStart(2, "0")}=${formatHex32(entry.registerValue)}`);
+    }
+    return [formatHex32(entry.pc), formatInstructionWord(entry.instructionWord), ...effects].join(" ");
+  });
+
+  if (snapshot.terminalRecord?.kind === "exit") {
+    lines.push(`EXIT ${snapshot.terminalRecord.code}`);
+  } else if (snapshot.terminalRecord?.kind === "error") {
+    lines.push(
+      `ERROR ${snapshot.terminalRecord.errorKind} ${formatHex32(snapshot.terminalRecord.pc)} ${formatInstructionWord(
+        snapshot.terminalRecord.instructionWord,
+      )}`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+export function formatPipelineOccupancyTable(snapshot: CycleSnapshot): string {
+  return snapshot.occupancyTable.join("\n");
 }
 
 export function stepSimulation(state: SimulationState): SimulationState {
@@ -68,34 +154,69 @@ export function stepSimulation(state: SimulationState): SimulationState {
   const cycle = previous.cycle + 1;
   const registers = previous.registers.slice();
   const memory = { ...previous.memory };
+  const consoleOutput = previous.consoleOutput.slice();
   const events: PipelineEvent[] = [];
+  const retireLog = previous.retireLog.slice();
   const registerDiffs: RegisterDiff[] = [];
   const memoryDiffs: MemoryDiff[] = [];
-  const slots = cloneStages(previous.stages);
+  const latches = cloneLatches(previous.latches);
+  const slots = projectStages(latches);
 
-  commitWriteback(cycle, slots.WB, registers, registerDiffs, events);
-  const memOutput = runMemory(cycle, slots.MEM, memory, memoryDiffs, events);
-  const wbOutput = writebackValue(slots.WB);
-  peerStages = slots;
-  const exOutput = runExecute(cycle, slots.EX, registers, memOutput, wbOutput, events);
+  const retireOutput = retireWriteback(cycle, slots.WB, registers, registerDiffs, retireLog, events);
+  if (retireOutput.terminalRecord) {
+    if (registers[0] !== 0) registers[0] = toInt32(0);
+    const terminalLatches = { ...emptyLatches(), memWb: slots.WB };
+    const terminalStages = projectStages(terminalLatches);
+    const timeline = buildTimeline(cycle, terminalStages, events);
+    const occupancyTable = buildOccupancyTable([
+      ...state.history.flatMap((snapshot) => snapshot.timeline),
+      ...timeline,
+    ]);
+    const current: CycleSnapshot = {
+      cycle,
+      pc: previous.pc,
+      nextSeqId: previous.nextSeqId,
+      latches: emptyLatches(),
+      stages: terminalStages,
+      registers,
+      memory,
+      consoleOutput,
+      events,
+      retireLog,
+      terminalRecord: retireOutput.terminalRecord,
+      registerDiffs,
+      memoryDiffs,
+      timeline,
+      occupancyTable,
+      paused: retireOutput.paused,
+      halted: true,
+    };
+    return { ...state, history: [...state.history, current], current };
+  }
 
-  const stall = shouldStallForLoadUse(slots.ID, slots.EX);
+  const memOutput = runMemory(cycle, slots.MEM, memory, consoleOutput, memoryDiffs, events);
+  const exOutput = runExecute(cycle, slots.EX, registers, events);
+  const decodeOutput = runDecode(cycle, slots.ID, events);
+
+  const flush = Boolean(exOutput?.taken);
+  const stall = !flush && shouldStallForDataHazard(slots.ID, [slots.EX, slots.MEM, slots.WB]);
   if (stall && slots.ID) {
     events.push({
       id: eventId(cycle, "stall", slots.ID.instructionId),
       cycle,
+      seqId: slots.ID.seqId,
       instructionId: slots.ID.instructionId,
       kind: "stall",
       label: "stall",
-      message: `${slots.ID.instruction.text} waits because ${slots.EX?.instruction.text} is loading a source register.`,
+      message: `${slots.ID.instruction.text} waits for an older writer to retire.`,
     });
   }
 
-  const flush = Boolean(exOutput?.taken);
   if (flush && slots.EX) {
     events.push({
       id: eventId(cycle, "branch", slots.EX.instructionId),
       cycle,
+      seqId: slots.EX.seqId,
       instructionId: slots.EX.instructionId,
       kind: "branch",
       label: "branch",
@@ -107,48 +228,59 @@ export function stepSimulation(state: SimulationState): SimulationState {
         events.push({
           id: eventId(cycle, "flush", flushed.instructionId),
           cycle,
+          seqId: flushed.seqId,
           instructionId: flushed.instructionId,
           kind: "flush",
           label: "flush",
           message: `${flushed.instruction.text} is flushed by the taken branch.`,
+          detail: { pc: flushed.pc },
         });
       }
     }
   }
 
-  const nextStages: StageSlots = {
-    WB: memOutput ? { ...slots.MEM!, ...memOutput } : slots.MEM,
-    MEM: exOutput ? { ...slots.EX!, ...exOutput } : slots.EX,
-    EX: flush || stall ? null : slots.ID,
-    ID: flush ? null : stall ? slots.ID : slots.IF,
-    IF: stall ? slots.IF : null,
+  const nextLatches: PipelineLatches = {
+    memWb: memOutput ? { ...slots.MEM!, ...memOutput } : slots.MEM,
+    exMem: exOutput ? { ...slots.EX!, ...exOutput } : slots.EX,
+    idEx: flush || stall ? null : decodeOutput ? { ...slots.ID!, ...decodeOutput } : slots.ID,
+    ifId: flush ? null : stall ? slots.ID : slots.IF,
+    fetch: flush ? null : stall ? slots.IF : null,
   };
+
+  let nextSeqId = previous.nextSeqId;
 
   let pc = previous.pc;
   if (flush) {
     pc = exOutput?.nextPc ?? previous.pc;
-  } else if (!stall && !memOutput?.halted) {
-    const fetched = fetchInstruction(state.program, previous.pc);
-    nextStages.IF = fetched;
-    pc = fetched && !fetched.halted ? toByteAddress(previous.pc + INSTRUCTION_SIZE_BYTES) : previous.pc;
+  } else if (!stall) {
+    const fetched = fetchInstruction(state.executionImage, previous.pc, nextSeqId);
+    nextLatches.fetch = fetched;
+    if (fetched) nextSeqId += 1;
+    pc = fetched ? toByteAddress(previous.pc + INSTRUCTION_SIZE_BYTES) : previous.pc;
   }
 
   if (registers[0] !== 0) registers[0] = toInt32(0);
-  const timeline = buildTimeline(cycle, nextStages, events);
+  const projectedStages = projectStages(nextLatches);
+  const timeline = buildTimeline(cycle, projectedStages, events);
+  const occupancyTable = buildOccupancyTable([...state.history.flatMap((snapshot) => snapshot.timeline), ...timeline]);
   const halted =
-    Boolean(exOutput?.halted || memOutput?.halted || nextStages.IF?.halted) ||
-    ((pc < 0 || pc >= state.program.length * INSTRUCTION_SIZE_BYTES) &&
-      STAGES.every((stage) => nextStages[stage] === null));
+    isOutsideInstructionImage(state.executionImage, pc) && STAGES.every((stage) => projectedStages[stage] === null);
   const current: CycleSnapshot = {
     cycle,
     pc,
-    stages: nextStages,
+    nextSeqId,
+    latches: nextLatches,
+    stages: projectedStages,
     registers,
     memory,
+    consoleOutput,
     events,
+    retireLog,
     registerDiffs,
     memoryDiffs,
     timeline,
+    occupancyTable,
+    paused: retireOutput.paused,
     halted,
   };
 
@@ -159,15 +291,41 @@ function emptyStages(): StageSlots {
   return { IF: null, ID: null, EX: null, MEM: null, WB: null };
 }
 
-function cloneStages(stages: StageSlots): StageSlots {
-  return Object.fromEntries(STAGES.map((stage) => [stage, stages[stage] ? { ...stages[stage]! } : null])) as StageSlots;
+function emptyLatches(): PipelineLatches {
+  return { fetch: null, ifId: null, idEx: null, exMem: null, memWb: null };
 }
 
-function fetchInstruction(program: Instruction[], pc: ByteAddress): StageSlot | null {
+function cloneLatches(latches: PipelineLatches): PipelineLatches {
+  return {
+    fetch: cloneSlot(latches.fetch),
+    ifId: cloneSlot(latches.ifId),
+    idEx: cloneSlot(latches.idEx),
+    exMem: cloneSlot(latches.exMem),
+    memWb: cloneSlot(latches.memWb),
+  };
+}
+
+function cloneSlot(slot: StageSlot | null): StageSlot | null {
+  return slot ? { ...slot } : null;
+}
+
+function projectStages(latches: PipelineLatches): StageSlots {
+  return {
+    IF: latches.fetch,
+    ID: latches.ifId,
+    EX: latches.idEx,
+    MEM: latches.exMem,
+    WB: latches.memWb,
+  };
+}
+
+function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress, seqId: number): StageSlot | null {
   if (pc % INSTRUCTION_SIZE_BYTES !== 0) {
     return {
+      seqId,
       instructionId: -1,
       pc,
+      instructionWord: null,
       instruction: {
         id: -1,
         op: "addi",
@@ -177,128 +335,277 @@ function fetchInstruction(program: Instruction[], pc: ByteAddress): StageSlot | 
         source: { line: 0, text: "" },
         text: `misaligned fetch at ${pc}`,
       },
-      halted: true,
+      error: { kind: "fetch-misaligned", message: `Misaligned fetch at byte address ${pc}.` },
     };
   }
-  const instruction = program[pc / INSTRUCTION_SIZE_BYTES];
-  if (!instruction) return null;
-  return { instructionId: instruction.id, pc, instruction };
+  if (!isRamRange(pc, INSTRUCTION_SIZE_BYTES)) {
+    return {
+      seqId,
+      instructionId: -1,
+      pc,
+      instructionWord: null,
+      instruction: {
+        id: -1,
+        op: "addi",
+        rd: toRegisterIndex(0),
+        rs1: toRegisterIndex(0),
+        imm: toSigned12Immediate(0),
+        source: { line: 0, text: "" },
+        text: `unmapped fetch at ${pc}`,
+      },
+      error: { kind: "fetch-unmapped", message: `Unmapped fetch at byte address ${pc}.` },
+    };
+  }
+  const fetched = executionImage.instructionMemory[pc];
+  if (!fetched) return null;
+  const decoded = decodeInstruction(fetched.word, pc, fetched.id, fetched.source, fetched.instruction?.text);
+  if (decoded.ok) {
+    return { seqId, instructionId: fetched.id, pc, instructionWord: fetched.word, instruction: decoded.instruction };
+  }
+  return {
+    seqId,
+    instructionId: fetched.id,
+    pc,
+    instructionWord: fetched.word,
+    instruction: invalidInstruction(fetched.id, fetched.source, fetched.instruction?.text ?? decoded.error.message),
+    decodeError: decoded.error,
+  };
 }
 
-function commitWriteback(
+function runDecode(_cycle: number, slot: StageSlot | null, _events: PipelineEvent[]): Partial<StageSlot> | null {
+  if (!slot?.decodeError) return null;
+  return { error: slot.decodeError };
+}
+
+function instructionFromImageEntry(entry: ExecutionImageInstruction): Instruction {
+  if (entry.instruction) return entry.instruction;
+  const decoded = decodeInstruction(entry.word, entry.address, entry.id, entry.source);
+  if (decoded.ok) return decoded.instruction;
+  return invalidInstruction(entry.id, entry.source, decoded.error.message);
+}
+
+function invalidInstruction(id: number, source: { line: number; text: string }, text: string): Instruction {
+  return {
+    id,
+    op: "addi",
+    rd: toRegisterIndex(0),
+    rs1: toRegisterIndex(0),
+    imm: toSigned12Immediate(0),
+    source,
+    text,
+  };
+}
+
+function isOutsideInstructionImage(executionImage: ExecutionImage, pc: ByteAddress): boolean {
+  const endAddress = executionImage.baseAddress + executionImage.instructions.length * INSTRUCTION_SIZE_BYTES;
+  return pc < executionImage.baseAddress || pc >= endAddress;
+}
+
+function retireWriteback(
   cycle: number,
   slot: StageSlot | null,
   registers: RegisterFile,
   diffs: RegisterDiff[],
+  retireLog: RetireLogEntry[],
   events: PipelineEvent[],
-) {
-  if (!slot) return;
+): RetireOutput {
+  if (!slot) return { paused: false };
   const rd = destinationRegister(slot.instruction);
-  if (rd == null || rd === 0) return;
-  const value = writebackValue(slot);
-  if (value == null) return;
-  const before = registers[rd] ?? toInt32(0);
-  const after = toInt32(value);
-  registers[rd] = after;
-  diffs.push({ register: rd, before, after });
-  events.push({
-    id: eventId(cycle, "commit", slot.instructionId),
-    cycle,
-    instructionId: slot.instructionId,
-    kind: "commit",
-    label: "commit",
-    message: `${slot.instruction.text} writes x${rd}: ${before} -> ${after}.`,
-    detail: { register: `x${rd}`, before, after },
+  const value = slot.error ? null : writebackValue(slot);
+  let register: RegisterIndex | undefined;
+  let registerValue: Int32 | undefined;
+
+  if (rd != null && rd !== 0 && value != null) {
+    const before = registers[rd] ?? toInt32(0);
+    const after = toInt32(value);
+    registers[rd] = after;
+    register = rd;
+    registerValue = after;
+    diffs.push({ register: rd, before, after });
+    events.push({
+      id: eventId(cycle, "retire", slot.instructionId),
+      cycle,
+      seqId: slot.seqId,
+      instructionId: slot.instructionId,
+      kind: "retire",
+      label: "retire",
+      message: `${slot.instruction.text} writes x${rd}: ${before} -> ${after}.`,
+      detail: { register: `x${rd}`, before, after },
+    });
+  }
+
+  retireLog.push({
+    pc: slot.pc,
+    instructionWord: slot.instructionWord,
+    instruction: slot.instruction,
+    memoryEffect: slot.memoryEffect,
+    register,
+    registerValue,
   });
+
+  if (slot.error) {
+    events.push(errorEvent(cycle, slot, slot.error.message, { errorKind: slot.error.kind }));
+    return {
+      paused: false,
+      terminalRecord: {
+        kind: "error",
+        errorKind: slot.error.kind,
+        pc: slot.pc,
+        instructionWord: slot.instructionWord,
+      },
+    };
+  }
+
+  if (slot.exitRequest) {
+    return { paused: false, terminalRecord: { kind: "exit", code: slot.exitRequest.code } };
+  }
+
+  return { paused: Boolean(slot.isEbreak) };
 }
 
 function runMemory(
   cycle: number,
   slot: StageSlot | null,
   memory: ByteMemory,
+  consoleOutput: ByteValue[],
   diffs: MemoryDiff[],
   events: PipelineEvent[],
 ): Partial<StageSlot> | null {
   if (!slot) return null;
+  if (slot.error) return {};
   if (slot.instruction.op === "lb" || slot.instruction.op === "lbu") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 1, "load");
+    if (!access.ok) return memoryError(access.kind, access.message);
+    if (access.kind !== "ram") {
+      return memoryError("mmio-violation", `${slot.instruction.text} cannot load from device byte address ${address}.`);
+    }
+    const rawValue = (memory[address] ?? 0) & 0xff;
     const loadedValue =
       slot.instruction.op === "lb" ? readSignedByte(memory, address) : readUnsignedByte(memory, address);
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "load",
       message: `${slot.instruction.text} reads byte at byte address ${address} = ${loadedValue}.`,
       detail: { address, value: loadedValue },
     });
-    return { loadedValue };
+    return { loadedValue, memoryEffect: { direction: "load", width: "b", address, value: rawValue } };
   }
   if (slot.instruction.op === "lh" || slot.instruction.op === "lhu") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 2, "load");
+    if (!access.ok) return memoryError(access.kind, access.message);
     if (!isAlignedHalfwordAddress(address)) {
-      events.push(
-        errorEvent(cycle, slot, `${slot.instruction.text} cannot load misaligned halfword address ${address}.`),
+      return memoryError(
+        "mem-misaligned",
+        `${slot.instruction.text} cannot load misaligned halfword address ${address}.`,
       );
-      return { halted: true };
     }
+    if (access.kind !== "ram") {
+      return memoryError("mmio-violation", `${slot.instruction.text} cannot load from device byte address ${address}.`);
+    }
+    const rawValue = readUnsignedHalfword(memory, address);
     const loadedValue =
       slot.instruction.op === "lh" ? readSignedHalfword(memory, address) : readUnsignedHalfword(memory, address);
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "load",
       message: `${slot.instruction.text} reads halfword at byte address ${address} = ${loadedValue}.`,
       detail: { address, value: loadedValue },
     });
-    return { loadedValue };
+    return { loadedValue, memoryEffect: { direction: "load", width: "h", address, value: rawValue } };
   }
   if (slot.instruction.op === "lw") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 4, "load");
+    if (!access.ok) return memoryError(access.kind, access.message);
     if (!isAlignedWordAddress(address)) {
-      events.push(errorEvent(cycle, slot, `${slot.instruction.text} cannot load misaligned word address ${address}.`));
-      return { halted: true };
+      return memoryError("mem-misaligned", `${slot.instruction.text} cannot load misaligned word address ${address}.`);
+    }
+    if (access.kind !== "ram") {
+      return memoryError("mmio-violation", `${slot.instruction.text} cannot load from device byte address ${address}.`);
     }
     const loadedValue = readWord(memory, address);
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "load",
       message: `${slot.instruction.text} reads word at byte address ${address} = ${loadedValue}.`,
       detail: { address, value: loadedValue },
     });
-    return { loadedValue };
+    return { loadedValue, memoryEffect: { direction: "load", width: "w", address, value: toUint32(loadedValue) } };
   }
   if (slot.instruction.op === "sb") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 1, "store");
+    if (!access.ok) return memoryError(access.kind, access.message);
     const after = toByteValue(slot.storeValue ?? 0);
+    const memoryEffect: MemoryEffect = { direction: "store", width: "b", address, value: after };
+    if (access.kind === "uart") {
+      consoleOutput.push(after);
+      events.push({
+        id: eventId(cycle, "memory", slot.instructionId),
+        cycle,
+        seqId: slot.seqId,
+        instructionId: slot.instructionId,
+        kind: "memory",
+        label: "uart",
+        message: `${slot.instruction.text} writes byte ${after} to UART data register.`,
+        detail: { address, value: after },
+      });
+      return { memoryEffect };
+    }
+    if (access.kind === "exit") {
+      const exitRequest = decodeExitRequest(after);
+      events.push(deviceStoreEvent(cycle, slot, "exit", address, after));
+      return { exitRequest, memoryEffect };
+    }
     const before = memory[address] ?? toByteValue(0);
     memory[address] = after;
     diffs.push({ address, before, after });
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "store",
       message: `${slot.instruction.text} writes byte at byte address ${address}.`,
       detail: { address, value: after },
     });
+    return { memoryEffect };
   }
   if (slot.instruction.op === "sh") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 2, "store");
+    if (!access.ok) return memoryError(access.kind, access.message);
     if (!isAlignedHalfwordAddress(address)) {
-      events.push(
-        errorEvent(cycle, slot, `${slot.instruction.text} cannot store misaligned halfword address ${address}.`),
+      return memoryError(
+        "mem-misaligned",
+        `${slot.instruction.text} cannot store misaligned halfword address ${address}.`,
       );
-      return { halted: true };
     }
     const value = toUint32(slot.storeValue ?? 0);
+    if (access.kind === "uart") {
+      return memoryError("mmio-violation", `${slot.instruction.text} cannot store halfword to UART data register.`);
+    }
+    const memoryEffect: MemoryEffect = { direction: "store", width: "h", address, value: value & 0xffff };
+    if (access.kind === "exit") {
+      const exitRequest = decodeExitRequest(value & 0xffff);
+      events.push(deviceStoreEvent(cycle, slot, "exit", address, value & 0xffff));
+      return { exitRequest, memoryEffect };
+    }
     const bytes = [toByteValue(value), toByteValue(value >>> 8)];
     bytes.forEach((after, offset) => {
       const byteAddress = toByteAddress(address + offset);
@@ -309,20 +616,32 @@ function runMemory(
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "store",
       message: `${slot.instruction.text} writes halfword at byte address ${address}.`,
       detail: { address, value: value & 0xffff },
     });
+    return { memoryEffect };
   }
   if (slot.instruction.op === "sw") {
     const address = slot.address ?? toByteAddress(0);
+    const access = classifyDataAccess(address, 4, "store");
+    if (!access.ok) return memoryError(access.kind, access.message);
     if (!isAlignedWordAddress(address)) {
-      events.push(errorEvent(cycle, slot, `${slot.instruction.text} cannot store misaligned word address ${address}.`));
-      return { halted: true };
+      return memoryError("mem-misaligned", `${slot.instruction.text} cannot store misaligned word address ${address}.`);
     }
     const value = toUint32(slot.storeValue ?? 0);
+    if (access.kind === "uart") {
+      return memoryError("mmio-violation", `${slot.instruction.text} cannot store word to UART data register.`);
+    }
+    const memoryEffect: MemoryEffect = { direction: "store", width: "w", address, value };
+    if (access.kind === "exit") {
+      const exitRequest = decodeExitRequest(value);
+      events.push(deviceStoreEvent(cycle, slot, "exit", address, value));
+      return { exitRequest, memoryEffect };
+    }
     const bytes = [toByteValue(value), toByteValue(value >>> 8), toByteValue(value >>> 16), toByteValue(value >>> 24)];
     bytes.forEach((after, offset) => {
       const byteAddress = toByteAddress(address + offset);
@@ -333,26 +652,27 @@ function runMemory(
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
+      seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
       label: "store",
       message: `${slot.instruction.text} writes word at byte address ${address}.`,
       detail: { address, value },
     });
+    return { memoryEffect };
   }
   return {};
 }
 
 function runExecute(
-  cycle: number,
+  _cycle: number,
   slot: StageSlot | null,
   registers: RegisterFile,
-  memOutput: Partial<StageSlot> | null,
-  wbOutput: Int32 | null,
-  events: PipelineEvent[],
+  _events: PipelineEvent[],
 ): Partial<StageSlot> | null {
   if (!slot) return null;
-  const read = (register: RegisterIndex) => readRegister(cycle, slot, register, registers, memOutput, wbOutput, events);
+  if (slot.error) return {};
+  const read = (register: RegisterIndex) => readRegister(register, registers);
 
   switch (slot.instruction.op) {
     case "add": {
@@ -447,14 +767,14 @@ function runExecute(
     case "lhu":
     case "lw": {
       const a = read(slot.instruction.rs1);
-      return { address: toByteAddress(toInt32(a + slot.instruction.imm)) };
+      return { address: toByteAddress(toUint32(a + slot.instruction.imm)) };
     }
     case "sb":
     case "sh":
     case "sw": {
       const a = read(slot.instruction.rs1);
       const b = read(slot.instruction.rs2);
-      return { address: toByteAddress(toInt32(a + slot.instruction.imm)), storeValue: b };
+      return { address: toByteAddress(toUint32(a + slot.instruction.imm)), storeValue: b };
     }
     case "beq": {
       const a = read(slot.instruction.rs1);
@@ -508,12 +828,15 @@ function runExecute(
       return { result: toInt32(slot.pc + INSTRUCTION_SIZE_BYTES), taken: true, nextPc: slot.instruction.target };
     case "jalr": {
       const a = read(slot.instruction.rs1);
-      const nextPc = toByteAddress(toInt32(a + slot.instruction.imm) & ~1);
+      const target = toUint32(a + slot.instruction.imm);
+      const nextPc = toByteAddress(target - (target % 2));
       if (!isAlignedInstructionAddress(nextPc)) {
-        events.push(
-          errorEvent(cycle, slot, `${slot.instruction.text} cannot jump to misaligned byte address ${nextPc}.`),
-        );
-        return { halted: true };
+        return {
+          error: {
+            kind: "fetch-misaligned",
+            message: `${slot.instruction.text} cannot jump to misaligned byte address ${nextPc}.`,
+          },
+        };
       }
       return { result: toInt32(slot.pc + INSTRUCTION_SIZE_BYTES), taken: true, nextPc };
     }
@@ -521,45 +844,29 @@ function runExecute(
       return { result: toInt32(slot.instruction.imm << 12) };
     case "auipc":
       return { result: toInt32(slot.pc + (slot.instruction.imm << 12)) };
+    case "fence":
+      return {};
+    case "ecall":
+      return { error: { kind: "ecall", message: "ecall is an error condition in rask." } };
+    case "ebreak":
+      return { isEbreak: true };
   }
 }
 
-function readRegister(
-  cycle: number,
-  consumer: StageSlot,
-  register: RegisterIndex,
-  registers: RegisterFile,
-  memOutput: Partial<StageSlot> | null,
-  wbOutput: Int32 | null,
-  events: PipelineEvent[],
-): Int32 {
+function readRegister(register: RegisterIndex, registers: RegisterFile): Int32 {
   if (register === 0) return toInt32(0);
-  const memSlot = consumerStagePeer(consumer, "MEM");
-  if (destinationRegister(memSlot?.instruction) === register) {
-    const value = memOutput?.loadedValue ?? memSlot?.result;
-    if (value != null) {
-      events.push(forwardEvent(cycle, consumer, register, "MEM", value));
-      return value;
-    }
-  }
-  const wbSlot = consumerStagePeer(consumer, "WB");
-  if (destinationRegister(wbSlot?.instruction) === register && wbOutput != null) {
-    events.push(forwardEvent(cycle, consumer, register, "WB", wbOutput));
-    return wbOutput;
-  }
   return registers[register] ?? toInt32(0);
 }
 
-let peerStages: StageSlots = emptyStages();
-
-function consumerStagePeer(_consumer: StageSlot, stage: StageName): StageSlot | null {
-  return peerStages[stage];
-}
-
-function shouldStallForLoadUse(id: StageSlot | null, ex: StageSlot | null): boolean {
-  if (!id || !ex || !isLoadInstruction(ex.instruction)) return false;
-  const rd = destinationRegister(ex.instruction);
-  return rd != null && sourceRegisters(id.instruction).includes(rd);
+function shouldStallForDataHazard(id: StageSlot | null, writers: Array<StageSlot | null>): boolean {
+  if (!id) return false;
+  const sources = sourceRegisters(id.instruction);
+  if (sources.length === 0) return false;
+  return writers.some((writer) => {
+    if (!writer || writer.error) return false;
+    const rd = destinationRegister(writer?.instruction);
+    return rd != null && rd !== 0 && sources.includes(rd);
+  });
 }
 
 function writebackValue(slot: StageSlot | null): Int32 | null {
@@ -588,51 +895,136 @@ function buildTimeline(cycle: number, stages: StageSlots, events: PipelineEvent[
     if (!slot) return;
     cells.push({
       cycle,
+      seqId: slot.seqId,
+      pc: slot.pc,
       instructionId: slot.instructionId,
       stage,
-      events: events.filter((event) => event.instructionId === slot.instructionId),
+      events: events.filter((event) => event.seqId === slot.seqId),
     });
   });
   for (const event of events) {
-    if (event.instructionId == null) continue;
-    if (!cells.some((cell) => cell.instructionId === event.instructionId && cell.cycle === cycle)) {
-      cells.push({ cycle, instructionId: event.instructionId, stage: "ID", events: [event] });
+    if (event.kind !== "flush" || event.instructionId == null) continue;
+    const seqId = event.seqId ?? event.instructionId;
+    if (!cells.some((cell) => cell.seqId === seqId && cell.cycle === cycle)) {
+      const flushed = Object.values(stages).find((slot) => slot?.seqId === seqId);
+      const pc =
+        typeof event.detail?.pc === "number" ? toByteAddress(event.detail.pc) : (flushed?.pc ?? toByteAddress(0));
+      cells.push({
+        cycle,
+        seqId,
+        pc,
+        instructionId: event.instructionId,
+        stage: "ID",
+        events: [event],
+      });
     }
   }
   return cells;
 }
 
-function forwardEvent(
-  cycle: number,
-  consumer: StageSlot,
-  register: RegisterIndex,
-  from: StageName,
-  value: Int32,
-): PipelineEvent {
-  return {
-    id: eventId(cycle, `forward-${from}-x${register}`, consumer.instructionId),
-    cycle,
-    instructionId: consumer.instructionId,
-    kind: "forward",
-    label: "fwd",
-    message: `${consumer.instruction.text} receives x${register}=${value} from ${from}.`,
-    detail: { register: `x${register}`, from, value },
-  };
+function buildOccupancyTable(cells: TimelineCell[]): string[] {
+  const symbol = { IF: "F", ID: "D", EX: "X", MEM: "M", WB: "W" } as const;
+  const maxCycle = Math.max(0, ...cells.map((cell) => cell.cycle));
+  const rows = new Map<number, { pc: ByteAddress; timeline: string[] }>();
+
+  for (const cell of cells) {
+    const row =
+      rows.get(cell.seqId) ??
+      ({
+        pc: cell.pc,
+        timeline: Array.from({ length: maxCycle }, () => "."),
+      } satisfies { pc: ByteAddress; timeline: string[] });
+    while (row.timeline.length < maxCycle) row.timeline.push(".");
+    row.timeline[cell.cycle - 1] = symbol[cell.stage];
+    rows.set(cell.seqId, row);
+  }
+
+  return Array.from(rows.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([seqId, row]) => `S${seqId} ${formatHex32(row.pc)} ${row.timeline.join("").replace(/\.+$/, "")}`);
 }
 
 function eventId(cycle: number, label: string, instructionId?: number): string {
   return `${cycle}:${instructionId ?? "global"}:${label}`;
 }
 
+function formatHex32(value: number): string {
+  return toHex32(value).slice(2);
+}
+
+function formatInstructionWord(word: InstructionWord | null): string {
+  return word == null ? "--------" : formatHex32(word);
+}
+
+function formatData(width: MemoryEffect["width"], value: number): string {
+  const digits = width === "b" ? 2 : width === "h" ? 4 : 8;
+  return toUint32(value).toString(16).slice(-digits).padStart(digits, "0");
+}
+
 function normalizeInitialMemory(memory: Record<number, number>): ByteMemory {
   const normalized: ByteMemory = {};
   for (const [address, value] of Object.entries(memory)) {
     const byteAddress = Number(address);
-    if (Number.isInteger(byteAddress)) {
+    if (Number.isInteger(byteAddress) && isRamRange(byteAddress, 1)) {
       normalized[toByteAddress(byteAddress)] = toByteValue(value);
     }
   }
   return normalized;
+}
+
+type MemoryDirection = "load" | "store";
+type MemoryAccess =
+  | { ok: true; kind: "ram" | "uart" | "exit" }
+  | { ok: false; kind: "mem-unmapped" | "mmio-violation"; message: string };
+
+function classifyDataAccess(address: ByteAddress, width: 1 | 2 | 4, direction: MemoryDirection): MemoryAccess {
+  const unsigned = toUint32(address);
+  if (isRamRange(unsigned, width)) return { ok: true, kind: "ram" };
+  if (unsigned === RASK_UART_DATA_ADDRESS) {
+    if (direction === "store" && width === 1) return { ok: true, kind: "uart" };
+    return { ok: false, kind: "mmio-violation", message: `Invalid UART ${direction} at byte address ${unsigned}.` };
+  }
+  if (unsigned === RASK_EXIT_DEVICE_ADDRESS) {
+    if (direction === "store") return { ok: true, kind: "exit" };
+    return {
+      ok: false,
+      kind: "mmio-violation",
+      message: `Invalid exit device ${direction} at byte address ${unsigned}.`,
+    };
+  }
+  return { ok: false, kind: "mem-unmapped", message: `Unmapped ${direction} at byte address ${unsigned}.` };
+}
+
+function isRamRange(address: number, width: 1 | 2 | 4): boolean {
+  return address >= RASK_RAM_BASE && address + width <= RASK_RAM_LIMIT_EXCLUSIVE;
+}
+
+function memoryError(kind: SimulatorError["kind"], message: string): Partial<StageSlot> {
+  return { error: { kind, message } };
+}
+
+function decodeExitRequest(value: number): ExitRequest {
+  const code = value >>> 16;
+  return { code, success: (value & 0xffff) === 0x5555 };
+}
+
+function deviceStoreEvent(
+  cycle: number,
+  slot: StageSlot,
+  device: "exit",
+  address: ByteAddress,
+  value: number,
+): PipelineEvent {
+  return {
+    id: eventId(cycle, "memory", slot.instructionId),
+    cycle,
+    seqId: slot.seqId,
+    instructionId: slot.instructionId,
+    kind: "memory",
+    label: device,
+    message: `${slot.instruction.text} writes ${toUint32(value)} to ${device} device register.`,
+    detail: { address, value: toUint32(value) },
+  };
 }
 
 function readWord(memory: ByteMemory, address: ByteAddress): Int32 {
@@ -675,14 +1067,20 @@ function isAlignedInstructionAddress(address: ByteAddress): boolean {
   return address % INSTRUCTION_SIZE_BYTES === 0;
 }
 
-function errorEvent(cycle: number, slot: StageSlot, message: string): PipelineEvent {
+function errorEvent(
+  cycle: number,
+  slot: StageSlot,
+  message: string,
+  detail: Record<string, string | number | boolean> = {},
+): PipelineEvent {
   return {
     id: eventId(cycle, "error", slot.instructionId),
     cycle,
+    seqId: slot.seqId,
     instructionId: slot.instructionId,
     kind: "error",
     label: "error",
     message,
-    detail: { pc: slot.pc },
+    detail: { pc: slot.pc, ...detail },
   };
 }
