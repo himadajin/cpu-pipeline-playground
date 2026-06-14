@@ -797,7 +797,7 @@ input {
   background: var(--panel);
 }
 
-.event-marker.commit {
+.event-marker.retire {
   border-color: var(--accent);
   background: var(--accent);
 }
@@ -863,7 +863,7 @@ input {
   font-size: 12px;
 }
 
-.event-detail.commit {
+.event-detail.retire {
   border-left: 3px solid var(--accent);
 }
 

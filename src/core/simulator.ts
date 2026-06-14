@@ -162,7 +162,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
   const latches = cloneLatches(previous.latches);
   const slots = projectStages(latches);
 
-  const retireOutput = commitWriteback(cycle, slots.WB, registers, registerDiffs, retireLog, events);
+  const retireOutput = retireWriteback(cycle, slots.WB, registers, registerDiffs, retireLog, events);
   if (retireOutput.terminalRecord) {
     if (registers[0] !== 0) registers[0] = toInt32(0);
     const terminalLatches = { ...emptyLatches(), memWb: slots.WB };
@@ -401,7 +401,7 @@ function isOutsideInstructionImage(executionImage: ExecutionImage, pc: ByteAddre
   return pc < executionImage.baseAddress || pc >= endAddress;
 }
 
-function commitWriteback(
+function retireWriteback(
   cycle: number,
   slot: StageSlot | null,
   registers: RegisterFile,
@@ -423,12 +423,12 @@ function commitWriteback(
     registerValue = after;
     diffs.push({ register: rd, before, after });
     events.push({
-      id: eventId(cycle, "commit", slot.instructionId),
+      id: eventId(cycle, "retire", slot.instructionId),
       cycle,
       seqId: slot.seqId,
       instructionId: slot.instructionId,
-      kind: "commit",
-      label: "commit",
+      kind: "retire",
+      label: "retire",
       message: `${slot.instruction.text} writes x${rd}: ${before} -> ${after}.`,
       detail: { register: `x${rd}`, before, after },
     });

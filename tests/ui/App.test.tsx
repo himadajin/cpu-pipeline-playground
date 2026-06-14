@@ -58,7 +58,7 @@ describe("App", () => {
 
     expect(container.querySelector(".event-marker")).toBeInTheDocument();
     expect(container.querySelector(".event-badge")).not.toBeInTheDocument();
-    expect(screen.queryByText(/commit:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/retire:/)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Events" }));
     expect(screen.getByText(/waits for an older writer to retire/)).toBeInTheDocument();

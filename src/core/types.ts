@@ -63,7 +63,7 @@ export type Opcode =
   | "ebreak";
 
 export type StageName = "IF" | "ID" | "EX" | "MEM" | "WB";
-export type EventKind = "stall" | "flush" | "commit" | "memory" | "branch" | "error";
+export type EventKind = "stall" | "flush" | "retire" | "memory" | "branch" | "error";
 
 export interface SourceLine {
   line: number;

@@ -55,7 +55,7 @@ describe("simulator", () => {
     expect(result.current.registers[2]).toBe(42);
   });
 
-  it("commits register and memory updates", () => {
+  it("retires register and memory updates", () => {
     const program = assembled(`
 lui x1, 0x80010
 addi x2, x0, 42
@@ -198,8 +198,27 @@ addi x8, x0, 2
       1: ".FDDDDXMW",
       2: "..FFFFDDDDXMW",
       3: "......FFFFDD",
+      4: "..........FD",
+      5: "............FDXMW",
     });
-    expect(formatPipelineOccupancyTable(simulation.current)).toContain("S3");
+    expect(formatPipelineOccupancyTable(simulation.current)).toBe(
+      [
+        "S0 80000000 FDXMW",
+        "S1 80000004 .FDDDDXMW",
+        "S2 80000008 ..FFFFDDDDXMW",
+        "S3 8000000c ......FFFFDD",
+        "S4 80000010 ..........FD",
+        "S5 80000010 ............FDXMW",
+      ].join("\n"),
+    );
+    expect(formatRetireLog(simulation.current)).toBe(
+      [
+        "80000000 00300293 x05=00000003",
+        "80000004 00528333 x06=00000006",
+        "80000008 00630463",
+        "80000010 00200413 x08=00000002",
+      ].join("\n"),
+    );
   });
 
   it("lets redirect win when a younger stalled instruction would otherwise hold fetch", () => {
@@ -354,15 +373,15 @@ done:
 addi x6, x0, 1
 `);
     const simulation = runSimulation(createSimulation(program));
-    const commitEvents = simulation.history.flatMap((snapshot) =>
-      snapshot.events.filter((event) => event.kind === "commit"),
+    const retireEvents = simulation.history.flatMap((snapshot) =>
+      snapshot.events.filter((event) => event.kind === "retire"),
     );
 
-    expect(commitEvents.some((event) => event.instructionId === program[2]?.id)).toBe(false);
-    expect(commitEvents.some((event) => event.instructionId === program[3]?.id)).toBe(true);
-    expect(commitEvents.some((event) => event.instructionId === program[4]?.id)).toBe(true);
-    expect(commitEvents.some((event) => event.instructionId === program[5]?.id)).toBe(true);
-    expect(commitEvents.some((event) => event.instructionId === program[6]?.id)).toBe(false);
+    expect(retireEvents.some((event) => event.instructionId === program[2]?.id)).toBe(false);
+    expect(retireEvents.some((event) => event.instructionId === program[3]?.id)).toBe(true);
+    expect(retireEvents.some((event) => event.instructionId === program[4]?.id)).toBe(true);
+    expect(retireEvents.some((event) => event.instructionId === program[5]?.id)).toBe(true);
+    expect(retireEvents.some((event) => event.instructionId === program[6]?.id)).toBe(false);
     expect(simulation.current.registers[5]).toBe(RESET_LINK + 24);
   });
 

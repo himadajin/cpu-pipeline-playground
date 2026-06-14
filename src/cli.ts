@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { assemble, createSimulation, stepSimulation } from "./core";
+import { assemble, createSimulation, formatPipelineOccupancyTable, formatRetireLog, stepSimulation } from "./core";
 
 const [filePath, cycleArg] = process.argv.slice(2);
 const maxCycles = Number.parseInt(cycleArg ?? "20", 10);
@@ -30,4 +30,17 @@ for (let index = 0; index < maxCycles && !simulation.current.halted; index += 1)
   for (const event of snapshot.events) {
     console.log(`  [${event.kind}] ${event.message}`);
   }
+}
+
+const retireLog = formatRetireLog(simulation.current);
+const occupancyTable = formatPipelineOccupancyTable(simulation.current);
+
+if (retireLog.length > 0) {
+  console.log("retire log:");
+  console.log(retireLog);
+}
+
+if (occupancyTable.length > 0) {
+  console.log("pipeline occupancy:");
+  console.log(occupancyTable);
 }
