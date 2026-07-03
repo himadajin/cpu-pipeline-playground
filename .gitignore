@@ -17,3 +17,6 @@
 # Tool caches
 /.vite/
 /.vitest/
+
+# Other files
+CLAUDE.md
