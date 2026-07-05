@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useSimulationSession } from "../../src/ui/hooks/useSimulationSession";
 
 const SOURCE = "addi x1, x0, 1\naddi x2, x1, 2\n";
@@ -15,14 +15,60 @@ describe("useSimulationSession", () => {
     expect(result.current.invalidated).toBe(false);
   });
 
-  it("steps and steps back through the current simulation", () => {
+  it("steps back by moving the cursor without destroying history", () => {
     const { result } = renderHook(() => useSimulationSession({ programId: "a", source: SOURCE }));
 
     act(() => result.current.actions.step());
     expect(result.current.simulation.current.cycle).toBe(1);
+    expect(result.current.cursor).toBe(1);
 
     act(() => result.current.actions.stepBack());
-    expect(result.current.simulation.current.cycle).toBe(0);
+    expect(result.current.cursor).toBe(0);
+    expect(result.current.viewSnapshot.cycle).toBe(0);
+    // The simulation history is preserved; Back only rewinds the view.
+    expect(result.current.simulation.current.cycle).toBe(1);
+
+    // Stepping behind the newest cycle replays instead of extending.
+    act(() => result.current.actions.step());
+    expect(result.current.cursor).toBe(1);
+    expect(result.current.simulation.current.cycle).toBe(1);
+  });
+
+  it("clamps the cursor to the simulated range and follows cell selection", () => {
+    const { result } = renderHook(() => useSimulationSession({ programId: "a", source: SOURCE }));
+
+    act(() => {
+      result.current.actions.step();
+      result.current.actions.step();
+    });
+    act(() => result.current.actions.setCursor(99));
+    expect(result.current.cursor).toBe(2);
+    act(() => result.current.actions.setCursor(-5));
+    expect(result.current.cursor).toBe(0);
+
+    act(() => result.current.actions.selectCell({ cycle: 1, seqId: 0, instructionId: 0 }));
+    expect(result.current.cursor).toBe(1);
+    expect(result.current.viewSnapshot.cycle).toBe(1);
+  });
+
+  it("runs automatically and stops at the halt", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useSimulationSession({ programId: "a", source: SOURCE }));
+
+      act(() => result.current.actions.toggleRun());
+      expect(result.current.running).toBe(true);
+
+      act(() => {
+        vi.advanceTimersByTime(150 * 30);
+      });
+
+      expect(result.current.simulation.current.halted).toBe(true);
+      expect(result.current.running).toBe(false);
+      expect(result.current.cursor).toBe(result.current.simulation.current.cycle);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("marks a run simulation as invalidated when the same program source changes", () => {

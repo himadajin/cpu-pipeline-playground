@@ -2,6 +2,7 @@ import clsx from "clsx";
 import { X } from "lucide-react";
 import { lazy, Suspense, type PointerEvent as ReactPointerEvent } from "react";
 import type { CycleSnapshot, SelectedCell } from "../../core";
+import type { ExecutedLine } from "../asmLanguage";
 import { pluralize } from "../format";
 import type { BottomTab } from "../hooks/useWorkbenchLayout";
 import { EventList } from "./EventList";
@@ -20,6 +21,7 @@ export function BottomDrawer({
   invalidated,
   lintCount,
   source,
+  executedLines,
   onSourceChange,
 }: {
   activeTab: BottomTab;
@@ -32,6 +34,7 @@ export function BottomDrawer({
   invalidated: boolean;
   lintCount: number;
   source: string;
+  executedLines: ExecutedLine[];
   onSourceChange: (value: string) => void;
 }) {
   if (!open) {
@@ -103,7 +106,7 @@ export function BottomDrawer({
               </div>
             }
           >
-            <AssemblyEditor source={source} onSourceChange={onSourceChange} />
+            <AssemblyEditor source={source} executedLines={executedLines} onSourceChange={onSourceChange} />
           </Suspense>
         ) : (
           <EventList events={snapshot.events} emptyText="No events in this cycle." />

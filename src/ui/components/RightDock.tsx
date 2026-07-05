@@ -3,7 +3,8 @@ import { X } from "lucide-react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { toHex32, toInt32 } from "../../core";
 import type { CycleSnapshot, Instruction, PipelineEvent } from "../../core";
-import type { RightTab } from "../hooks/useWorkbenchLayout";
+import type { RegisterNameStyle, RightTab } from "../hooks/useWorkbenchLayout";
+import { registerName } from "../registerNames";
 import { EventList } from "./EventList";
 import { TabButton } from "./TabButton";
 
@@ -13,6 +14,8 @@ export function RightDock({
   onTabChange,
   onOpenChange,
   onResizeStart,
+  registerNames,
+  onRegisterNamesChange,
   selectedInstruction,
   selectedSnapshot,
   selectedTimelineCell,
@@ -24,11 +27,13 @@ export function RightDock({
   onTabChange: (tab: RightTab) => void;
   onOpenChange: (open: boolean) => void;
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  registerNames: RegisterNameStyle;
+  onRegisterNamesChange: (style: RegisterNameStyle) => void;
   selectedInstruction: Instruction | null | undefined;
   selectedSnapshot: CycleSnapshot | undefined;
   selectedTimelineCell: CycleSnapshot["timeline"][number] | null;
   selectedEvents: PipelineEvent[];
-  /** Snapshot shown by the Registers / Memory tabs: the selected cycle when a cell is selected, otherwise the current cycle. */
+  /** Snapshot shown by the Registers / Memory tabs: always the cursor cycle. */
   stateSnapshot: CycleSnapshot;
 }) {
   if (!open) {
@@ -82,14 +87,36 @@ export function RightDock({
             Memory
           </TabButton>
         </div>
-        <button
-          className="panel-close-button"
-          type="button"
-          aria-label="Close right dock"
-          onClick={() => onOpenChange(false)}
-        >
-          <X size={13} />
-        </button>
+        <div className="header-status">
+          {activeTab === "registers" && (
+            <div className="name-toggle" role="group" aria-label="Register name style">
+              <button
+                className={clsx("name-toggle-option", registerNames === "numeric" && "active")}
+                type="button"
+                aria-pressed={registerNames === "numeric"}
+                onClick={() => onRegisterNamesChange("numeric")}
+              >
+                x5
+              </button>
+              <button
+                className={clsx("name-toggle-option", registerNames === "abi" && "active")}
+                type="button"
+                aria-pressed={registerNames === "abi"}
+                onClick={() => onRegisterNamesChange("abi")}
+              >
+                t0
+              </button>
+            </div>
+          )}
+          <button
+            className="panel-close-button"
+            type="button"
+            aria-label="Close right dock"
+            onClick={() => onOpenChange(false)}
+          >
+            <X size={13} />
+          </button>
+        </div>
       </div>
       <div className="dock-body">
         {activeTab === "inspector" && (
@@ -100,7 +127,7 @@ export function RightDock({
             selectedEvents={selectedEvents}
           />
         )}
-        {activeTab === "registers" && <RegistersPanel snapshot={stateSnapshot} />}
+        {activeTab === "registers" && <RegistersPanel snapshot={stateSnapshot} nameStyle={registerNames} />}
         {activeTab === "memory" && <MemoryPanel snapshot={stateSnapshot} />}
       </div>
     </section>
@@ -139,7 +166,7 @@ function InspectorPanel({
   );
 }
 
-function RegistersPanel({ snapshot }: { snapshot: CycleSnapshot }) {
+function RegistersPanel({ snapshot, nameStyle }: { snapshot: CycleSnapshot; nameStyle: RegisterNameStyle }) {
   const changedRegisters = new Set<number>(snapshot.registerDiffs.map((diff) => diff.register));
 
   return (
@@ -149,7 +176,7 @@ function RegistersPanel({ snapshot }: { snapshot: CycleSnapshot }) {
         {snapshot.registerDiffs.length > 0
           ? snapshot.registerDiffs.map((diff) => (
               <span className="state-summary-entry" key={diff.register}>
-                x{diff.register} {toHex32(diff.before)} {"->"} {toHex32(diff.after)}
+                {registerName(diff.register, nameStyle)} {toHex32(diff.before)} {"->"} {toHex32(diff.after)}
               </span>
             ))
           : `write @ cycle ${snapshot.cycle}: -`}
@@ -162,7 +189,9 @@ function RegistersPanel({ snapshot }: { snapshot: CycleSnapshot }) {
               className={clsx("register-cell", changed && "changed")}
               key={changed ? `${snapshot.cycle}:${index}` : index}
             >
-              <span className="register-name">x{index}</span>
+              <span className="register-name" title={registerName(index, nameStyle === "abi" ? "numeric" : "abi")}>
+                {registerName(index, nameStyle)}
+              </span>
               <span className="register-value-stack">
                 <strong className="register-value">{toHex32(value)}</strong>
                 <span className="register-secondary">{toInt32(value)}</span>

@@ -332,6 +332,45 @@ input {
   color: var(--ink);
 }
 
+/* "-> cycle N" returns the cursor to the newest cycle; it must read as a control. */
+button.mini-status.jump-latest {
+  cursor: pointer;
+  color: var(--ink);
+  border-color: var(--line-strong);
+  font-weight: 600;
+}
+
+button.mini-status.jump-latest:hover {
+  background: var(--hover);
+}
+
+.name-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.name-toggle-option {
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.name-toggle-option:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.name-toggle-option.active {
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
+}
+
 .toolbar-spacer {
   flex: 1;
 }
@@ -421,7 +460,7 @@ input {
 
 .pipeline-panel {
   display: grid;
-  grid-template-rows: 34px 88px minmax(0, 1fr);
+  grid-template-rows: 34px minmax(0, 1fr);
   background: var(--paper);
 }
 
@@ -618,61 +657,6 @@ input {
   height: 100%;
 }
 
-/* ------------------------------------------------------------ stage board */
-
-.stage-board {
-  padding: 7px 10px;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-  border-bottom: 1px solid var(--line);
-}
-
-.stage-tile {
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-left-width: 3px;
-  border-radius: 3px;
-  background: var(--panel);
-  padding: 6px 8px;
-}
-
-.stage-tile:nth-child(1) {
-  border-left-color: var(--st-if);
-}
-
-.stage-tile:nth-child(2) {
-  border-left-color: var(--st-id);
-}
-
-.stage-tile:nth-child(3) {
-  border-left-color: var(--st-ex);
-}
-
-.stage-tile:nth-child(4) {
-  border-left-color: var(--st-mem);
-}
-
-.stage-tile:nth-child(5) {
-  border-left-color: var(--st-wb);
-}
-
-.stage-name {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.stage-inst {
-  margin-top: 5px;
-  min-height: 28px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--ink);
-  font: 12px/1.35 var(--mono);
-}
-
 /* --------------------------------------------------------------- timeline */
 
 .timeline-shell {
@@ -720,11 +704,29 @@ input {
   padding-left: 8px;
 }
 
+/* The cycle ruler doubles as the cursor scrubber. */
+.header-row {
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.header-row .instruction-header {
+  cursor: default;
+}
+
+/* The cursor flag: the one place the chrome goes solid ink. */
 .cycle-header.current {
-  color: var(--ink);
+  color: var(--paper);
   font-weight: 600;
-  background: var(--active);
-  box-shadow: inset 0 -2px 0 var(--ink);
+  background: var(--ink);
+}
+
+.timeline-empty {
+  margin: 0;
+  padding: 14px 4px;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 12.5px;
 }
 
 .instruction-cell {
@@ -799,13 +801,64 @@ input {
   color: #fff;
 }
 
+/* Held cells: the same stage repeated (a stall or fetch freeze) reads as a
+ * hatched continuation of the stage color instead of a fresh solid latch. */
+.timeline-cell.held.if {
+  background: repeating-linear-gradient(315deg, var(--st-if-tint) 0 5px, var(--panel) 5px 10px);
+  color: var(--st-if);
+}
+
+.timeline-cell.held.id {
+  background: repeating-linear-gradient(315deg, var(--st-id-tint) 0 5px, var(--panel) 5px 10px);
+  color: var(--st-id);
+}
+
+.timeline-cell.held.ex {
+  background: repeating-linear-gradient(315deg, var(--st-ex-tint) 0 5px, var(--panel) 5px 10px);
+  color: var(--st-ex);
+}
+
+.timeline-cell.held.mem {
+  background: repeating-linear-gradient(315deg, var(--st-mem-tint) 0 5px, var(--panel) 5px 10px);
+  color: var(--st-mem);
+}
+
+.timeline-cell.held.wb {
+  background: repeating-linear-gradient(315deg, var(--st-wb-tint) 0 5px, var(--panel) 5px 10px);
+  color: var(--st-wb);
+}
+
+/* Cells ahead of the cursor are already-computed future: visible but dimmed. */
+.timeline-cell.ahead {
+  opacity: 0.3;
+}
+
+/* Cursor column rails, drawn on every cell in the column. */
 .timeline-cell.current-cycle {
-  box-shadow: inset 2px 0 0 var(--ink);
+  box-shadow:
+    inset 1.5px 0 0 var(--ink),
+    inset -1.5px 0 0 var(--ink);
 }
 
 .timeline-cell.selected {
   outline: 2px solid var(--ink);
   outline-offset: -2px;
+}
+
+/* Newly computed cells latch in once when the simulation extends; the class
+ * follows the newest cycle, so scrubbing the cursor never re-triggers it. */
+@media (prefers-reduced-motion: no-preference) {
+  .timeline-cell.latched:not(:disabled) {
+    animation: cell-latch 0.16s ease-out;
+  }
+
+  @keyframes cell-latch {
+    from {
+      transform: scaleX(0.6);
+      transform-origin: left center;
+      opacity: 0.4;
+    }
+  }
 }
 
 /* ---------------------------------------------------------- event markers */

@@ -10,6 +10,7 @@ const BOTTOM_RAIL_HEIGHT = 34;
 
 export type BottomTab = "assembly" | "events";
 export type RightTab = "inspector" | "registers" | "memory";
+export type RegisterNameStyle = "numeric" | "abi";
 
 export type WorkbenchLayout = {
   bottomOpen: boolean;
@@ -18,6 +19,7 @@ export type WorkbenchLayout = {
   rightOpen: boolean;
   rightWidth: number;
   rightTab: RightTab;
+  registerNames: RegisterNameStyle;
 };
 
 const DEFAULT_LAYOUT: WorkbenchLayout = {
@@ -27,6 +29,7 @@ const DEFAULT_LAYOUT: WorkbenchLayout = {
   rightOpen: true,
   rightWidth: 340,
   rightTab: "inspector",
+  registerNames: "numeric",
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -39,6 +42,10 @@ function isBottomTab(value: unknown): value is BottomTab {
 
 function isRightTab(value: unknown): value is RightTab {
   return value === "inspector" || value === "registers" || value === "memory";
+}
+
+function isRegisterNameStyle(value: unknown): value is RegisterNameStyle {
+  return value === "numeric" || value === "abi";
 }
 
 function loadWorkbenchLayout(): WorkbenchLayout {
@@ -59,6 +66,7 @@ function loadWorkbenchLayout(): WorkbenchLayout {
           ? clamp(parsed.rightWidth, RIGHT_DOCK_MIN_WIDTH, RIGHT_DOCK_MAX_WIDTH)
           : DEFAULT_LAYOUT.rightWidth,
       rightTab: isRightTab(parsed.rightTab) ? parsed.rightTab : DEFAULT_LAYOUT.rightTab,
+      registerNames: isRegisterNameStyle(parsed.registerNames) ? parsed.registerNames : DEFAULT_LAYOUT.registerNames,
     };
   } catch {
     return DEFAULT_LAYOUT;
@@ -92,6 +100,10 @@ export function useWorkbenchLayout() {
 
   function setRightOpen(open: boolean) {
     updateLayout({ rightOpen: open });
+  }
+
+  function setRegisterNames(style: RegisterNameStyle) {
+    updateLayout({ registerNames: style });
   }
 
   function startRightResize(event: ReactPointerEvent<HTMLButtonElement>) {
@@ -140,6 +152,7 @@ export function useWorkbenchLayout() {
       selectBottomTab,
       selectRightTab,
       setBottomOpen,
+      setRegisterNames,
       setRightOpen,
       startBottomResize,
       startRightResize,

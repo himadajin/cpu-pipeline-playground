@@ -34,6 +34,7 @@ describe("useWorkbenchLayout", () => {
       rightOpen: true,
       rightWidth: 340,
       rightTab: "inspector",
+      registerNames: "numeric",
     });
     expect(result.current.dimensions).toEqual({
       bottomRailHeight: 34,
@@ -63,6 +64,19 @@ describe("useWorkbenchLayout", () => {
       rightOpen: false,
       rightWidth: 280,
       rightTab: "registers",
+      registerNames: "numeric",
+    });
+  });
+
+  it("persists the register name style", async () => {
+    const { result } = renderHook(() => useWorkbenchLayout());
+
+    act(() => result.current.actions.setRegisterNames("abi"));
+
+    expect(result.current.layout.registerNames).toBe("abi");
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(LAYOUT_STORAGE_KEY) ?? "{}");
+      expect(stored.registerNames).toBe("abi");
     });
   });
 

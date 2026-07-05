@@ -1,6 +1,14 @@
 import clsx from "clsx";
-import { useEffect, useRef } from "react";
+import {
+  useEffect,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { CycleSnapshot, Instruction, PipelineEvent, SelectedCell } from "../../core";
+
+const LABEL_COLUMN_WIDTH = 148;
+const CYCLE_COLUMN_WIDTH = 72;
 
 interface TimelineRow {
   seqId: number;
@@ -11,56 +19,114 @@ interface TimelineRow {
 
 export function Timeline({
   instructions,
-  snapshots,
   cells,
-  currentCycle,
+  cursor,
+  latestCycle,
   selectedCell,
   onSelect,
+  onCursorChange,
 }: {
   instructions: Instruction[];
-  snapshots: CycleSnapshot[];
   cells: CycleSnapshot["timeline"];
-  currentCycle: number;
+  cursor: number;
+  latestCycle: number;
   selectedCell: SelectedCell | null;
   onSelect: (cell: SelectedCell) => void;
+  onCursorChange: (cycle: number) => void;
 }) {
   // Cycle numbers are 1-origin (spec §4); cycle 0 is the pre-execution reset state and has no column.
-  const maxCycle = Math.max(12, snapshots.at(-1)?.cycle ?? 0);
+  const maxCycle = Math.max(12, latestCycle);
   const cycles = Array.from({ length: maxCycle }, (_, index) => index + 1);
   const instructionMap = new Map(instructions.map((instruction) => [instruction.id, instruction]));
   const rows = buildRows(cells, instructionMap);
   const cellMap = new Map(cells.map((cell) => [`${cell.seqId}:${cell.cycle}`, cell]));
-  const rowStyle = { gridTemplateColumns: `148px repeat(${cycles.length}, 72px)` };
+  const rowStyle = { gridTemplateColumns: `${LABEL_COLUMN_WIDTH}px repeat(${cycles.length}, ${CYCLE_COLUMN_WIDTH}px)` };
   const shellRef = useRef<HTMLElement | null>(null);
-  const currentCycleRef = useRef<HTMLDivElement | null>(null);
+  const rulerRef = useRef<HTMLDivElement | null>(null);
+  const cursorHeaderRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     const shell = shellRef.current;
-    const target = currentCycleRef.current;
+    const target = cursorHeaderRef.current;
     if (!shell || !target) return;
-    // Scroll only when the current cycle column leaves the visible area, so
-    // stepping does not nudge the viewport on every cycle. The sticky
-    // instruction column covers the left edge of the shell.
-    const stickyWidth = 148;
+    // Scroll only when the cursor column leaves the visible area, so stepping
+    // does not nudge the viewport on every cycle. The sticky instruction
+    // column covers the left edge of the shell.
     const shellRect = shell.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-    const outOfView = targetRect.left < shellRect.left + stickyWidth || targetRect.right > shellRect.right;
+    const outOfView = targetRect.left < shellRect.left + LABEL_COLUMN_WIDTH || targetRect.right > shellRect.right;
     if (outOfView) target.scrollIntoView?.({ inline: "nearest", block: "nearest" });
-  }, [currentCycle]);
+  }, [cursor]);
+
+  function cycleFromPointer(event: { clientX: number }): number {
+    const ruler = rulerRef.current;
+    if (!ruler) return cursor;
+    const x = event.clientX - ruler.getBoundingClientRect().left - LABEL_COLUMN_WIDTH;
+    return Math.max(0, Math.min(Math.ceil(x / CYCLE_COLUMN_WIDTH), latestCycle));
+  }
+
+  function handleRulerPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    onCursorChange(cycleFromPointer(event));
+    const handleMove = (moveEvent: PointerEvent) => onCursorChange(cycleFromPointer(moveEvent));
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
+
+  function handleRulerKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      onCursorChange(Math.min(cursor + 1, latestCycle));
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      onCursorChange(Math.max(cursor - 1, 0));
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      onCursorChange(0);
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      onCursorChange(latestCycle);
+    }
+  }
+
   return (
     <section className="timeline-shell" ref={shellRef}>
       <div className="timeline" role="grid" aria-label="Pipeline timeline">
-        <div className="timeline-row header-row" style={rowStyle}>
+        <div
+          className="timeline-row header-row"
+          style={rowStyle}
+          ref={rulerRef}
+          role="slider"
+          aria-label="Cycle cursor"
+          aria-valuemin={0}
+          aria-valuemax={latestCycle}
+          aria-valuenow={cursor}
+          aria-valuetext={`cycle ${cursor}`}
+          tabIndex={0}
+          onPointerDown={handleRulerPointerDown}
+          onKeyDown={handleRulerKeyDown}
+        >
           <div className="instruction-header">Instruction</div>
           {cycles.map((cycle) => (
             <div
-              className={clsx("cycle-header", cycle === currentCycle && "current")}
+              className={clsx("cycle-header", cycle === cursor && "current")}
               key={cycle}
-              ref={cycle === currentCycle ? currentCycleRef : undefined}
+              ref={cycle === cursor ? cursorHeaderRef : undefined}
             >
               {cycle}
             </div>
           ))}
         </div>
+        {rows.length === 0 && (
+          <p className="timeline-empty">Nothing has been fetched yet. Step runs the first cycle.</p>
+        )}
         {rows.map((row) => (
           <div className="timeline-row" key={row.seqId} style={rowStyle}>
             <div className="instruction-cell" title={row.instruction?.text ?? `pc 0x${formatHex(row.pc)}`}>
@@ -77,12 +143,18 @@ export function Timeline({
             {cycles.map((cycle) => {
               const cell = cellMap.get(`${row.seqId}:${cycle}`);
               const selected = selectedCell?.cycle === cycle && selectedCell.seqId === row.seqId;
+              // A repeated stage means the instruction is held in place (the
+              // spec's repeated occupancy letter); render it hatched.
+              const held = cell !== undefined && cellMap.get(`${row.seqId}:${cycle - 1}`)?.stage === cell.stage;
               return (
                 <button
                   className={clsx(
                     "timeline-cell",
                     cell?.stage.toLowerCase(),
-                    cycle === currentCycle && "current-cycle",
+                    held && "held",
+                    cycle === cursor && "current-cycle",
+                    cell && cycle === latestCycle && "latched",
+                    cell && cycle > cursor && "ahead",
                     selected && "selected",
                   )}
                   key={cycle}

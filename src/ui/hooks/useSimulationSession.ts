@@ -1,13 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   assemble,
   createSimulation,
-  stepBackSimulation,
   stepSimulation,
   type CycleSnapshot,
   type SelectedCell,
   type SimulationState,
 } from "../../core";
+
+const RUN_INTERVAL_MS = 150;
 
 export function createSimulationForSource(source: string) {
   const result = assemble(source);
@@ -19,6 +20,13 @@ interface SimulationSessionState {
   simulation: SimulationState;
   simSource: string;
   selectedCell: SelectedCell | null;
+  /**
+   * The single observation time: which cycle snapshot the workbench displays.
+   * Stepping at the newest cycle extends the simulation; stepping behind it
+   * only replays. Back never destroys history.
+   */
+  cursor: number;
+  running: boolean;
 }
 
 export function useSimulationSession({ programId, source }: { programId: string; source: string }) {
@@ -27,6 +35,8 @@ export function useSimulationSession({ programId, source }: { programId: string;
     simulation: createSimulationForSource(source),
     simSource: source,
     selectedCell: null,
+    cursor: 0,
+    running: false,
   }));
   // Program switch: adjust state during render so the reset has a single
   // path. React re-renders immediately with the fresh state, so everything
@@ -37,13 +47,19 @@ export function useSimulationSession({ programId, source }: { programId: string;
       simulation: createSimulationForSource(source),
       simSource: source,
       selectedCell: null,
+      cursor: 0,
+      running: false,
     });
   }
 
-  const { simulation, selectedCell } = state;
+  const { simulation, selectedCell, cursor, running } = state;
   const assembled = useMemo(() => assemble(source), [source]);
   const invalidated = state.simSource !== source && simulation.current.cycle > 0;
   const snapshots = simulation.history;
+  const latestCycle = simulation.current.cycle;
+  const atLatest = cursor >= latestCycle;
+  // History holds one snapshot per cycle starting at cycle 0.
+  const viewSnapshot: CycleSnapshot = snapshots[Math.min(cursor, snapshots.length - 1)] ?? simulation.current;
   const timelineCells = snapshots.flatMap((snapshot) => snapshot.timeline);
   const selectedInstruction = selectedCell
     ? simulation.program.find((instruction) => instruction.id === selectedCell.instructionId)
@@ -55,7 +71,7 @@ export function useSimulationSession({ programId, source }: { programId: string;
     ? (selectedSnapshot?.timeline.find((cell) => cell.seqId === selectedCell.seqId) ?? null)
     : null;
   const selectedEvents = selectedSnapshot?.events.filter((event) => event.seqId === selectedCell?.seqId) ?? [];
-  const activeEventSnapshot: CycleSnapshot = selectedSnapshot ?? simulation.current;
+  const canStep = assembled.ok && !invalidated && (!atLatest || !simulation.current.halted);
 
   function reset() {
     if (!assembled.ok) return;
@@ -64,53 +80,118 @@ export function useSimulationSession({ programId, source }: { programId: string;
       simulation: createSimulation(assembled.executionImage),
       simSource: source,
       selectedCell: null,
+      cursor: 0,
+      running: false,
     });
+  }
+
+  function stepOnce(current: SimulationSessionState): SimulationSessionState {
+    // Behind the newest cycle the step is a replay: only the cursor moves.
+    if (current.cursor < current.simulation.current.cycle) {
+      return { ...current, cursor: current.cursor + 1 };
+    }
+    // Rebuild before stepping when nothing has run yet and the source moved
+    // on (edits at cycle 0 never attach to a stale simulation), or when the
+    // last assemble failed and left an empty program.
+    const stale =
+      current.simulation.program.length === 0 ||
+      (current.simSource !== source && current.simulation.current.cycle === 0);
+    if (current.simulation.current.halted && !stale) return current;
+    const baseSimulation = stale ? createSimulation(assembled.executionImage) : current.simulation;
+    const simulation = stepSimulation(baseSimulation);
+    return {
+      ...current,
+      simulation,
+      simSource: source,
+      cursor: simulation.current.cycle,
+    };
   }
 
   function step() {
     if (invalidated || !assembled.ok) return;
-    setState((current) => {
-      // Rebuild before stepping when nothing has run yet and the source moved
-      // on (edits at cycle 0 never attach to a stale simulation), or when the
-      // last assemble failed and left an empty program.
-      const stale =
-        current.simulation.program.length === 0 ||
-        (current.simSource !== source && current.simulation.current.cycle === 0);
-      const baseSimulation = stale ? createSimulation(assembled.executionImage) : current.simulation;
-      return {
-        programId,
-        simulation: stepSimulation(baseSimulation),
-        simSource: source,
-        selectedCell: current.selectedCell,
-      };
-    });
+    setState((current) => stepOnce(current));
   }
 
   function stepBack() {
-    setState((current) => ({ ...current, simulation: stepBackSimulation(current.simulation) }));
+    setState((current) => ({ ...current, cursor: Math.max(0, current.cursor - 1), running: false }));
+  }
+
+  function setCursor(cycle: number) {
+    setState((current) => ({
+      ...current,
+      cursor: Math.max(0, Math.min(cycle, current.simulation.current.cycle)),
+    }));
+  }
+
+  function jumpToLatest() {
+    setState((current) => ({ ...current, cursor: current.simulation.current.cycle }));
   }
 
   function selectCell(cell: SelectedCell) {
-    setState((current) => ({ ...current, selectedCell: cell }));
+    setState((current) => ({
+      ...current,
+      selectedCell: cell,
+      cursor: Math.max(0, Math.min(cell.cycle, current.simulation.current.cycle)),
+    }));
   }
+
+  function toggleRun() {
+    if (invalidated || !assembled.ok) return;
+    setState((current) => ({ ...current, running: !current.running }));
+  }
+
+  const runnable = canStep;
+  useEffect(() => {
+    if (!running) return;
+    if (!runnable) {
+      setState((current) => (current.running ? { ...current, running: false } : current));
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setState((current) => {
+        const next = stepOnce(current);
+        // Stop at the pause point (ebreak retire) and when the machine halts;
+        // both are states the user asked to observe, not to skip.
+        const reachedLatest = next.cursor >= next.simulation.current.cycle;
+        const shouldStop = reachedLatest && (next.simulation.current.halted || next.simulation.current.paused);
+        return shouldStop ? { ...next, running: false } : next;
+      });
+    }, RUN_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [running, runnable, source]);
+
+  // Editing while running invalidates the simulation; stop the clock too.
+  useEffect(() => {
+    if (invalidated && running) {
+      setState((current) => ({ ...current, running: false }));
+    }
+  }, [invalidated, running]);
 
   return {
     assembled,
     simulation,
     snapshots,
     timelineCells,
+    cursor,
+    latestCycle,
+    atLatest,
+    viewSnapshot,
+    running,
+    canStep,
     selectedCell,
     selectedInstruction,
     selectedSnapshot,
     selectedTimelineCell,
     selectedEvents,
-    activeEventSnapshot,
     invalidated,
     actions: {
       reset,
       step,
       stepBack,
+      setCursor,
+      jumpToLatest,
       selectCell,
+      toggleRun,
     },
   };
 }

@@ -1,33 +1,49 @@
 import clsx from "clsx";
 import type { AssembleResult, CycleSnapshot, SelectedCell } from "../../core";
 import { pluralize } from "../format";
-import { StageBoard } from "./StageBoard";
 import { Timeline } from "./Timeline";
 
 export function PipelinePanel({
   assembled,
   cells,
   current,
+  cursor,
   invalidated,
+  onCursorChange,
+  onJumpToLatest,
   onSelectCell,
   selectedCell,
-  snapshots,
 }: {
   assembled: AssembleResult;
   cells: CycleSnapshot["timeline"];
   current: CycleSnapshot;
+  cursor: number;
   invalidated: boolean;
+  onCursorChange: (cycle: number) => void;
+  onJumpToLatest: () => void;
   onSelectCell: (cell: SelectedCell) => void;
   selectedCell: SelectedCell | null;
-  snapshots: CycleSnapshot[];
 }) {
+  const latestCycle = current.cycle;
+  const viewingPast = cursor < latestCycle;
+
   return (
     <section className="pipeline-panel">
       <div className="pipeline-header">
         <span>Pipeline</span>
         <div className="pipeline-status">
-          <span className="mini-status">cycle {current.cycle}</span>
+          {viewingPast ? (
+            <>
+              <span className="mini-status">viewing cycle {cursor}</span>
+              <button className="mini-status jump-latest" type="button" onClick={onJumpToLatest}>
+                {"->"} cycle {latestCycle}
+              </button>
+            </>
+          ) : (
+            <span className="mini-status">cycle {latestCycle}</span>
+          )}
           {current.paused && <span className="mini-status warn">paused</span>}
+          {current.halted && <span className="mini-status">halted</span>}
           <span className={clsx("mini-status", !assembled.ok && "bad")}>
             {assembled.ok
               ? pluralize(assembled.instructions.length, "instruction")
@@ -36,14 +52,14 @@ export function PipelinePanel({
           {invalidated && <span className="mini-status warn">simulation invalidated</span>}
         </div>
       </div>
-      <StageBoard snapshot={current} />
       <Timeline
         instructions={assembled.instructions}
-        snapshots={snapshots}
         cells={cells}
-        currentCycle={current.cycle}
+        cursor={cursor}
+        latestCycle={latestCycle}
         selectedCell={selectedCell}
         onSelect={onSelectCell}
+        onCursorChange={onCursorChange}
       />
     </section>
   );
