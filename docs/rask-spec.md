@@ -180,6 +180,8 @@ ID 段の命令が `rs1` または `rs2` を使用し、ID/EX・EX/MEM・MEM/WB 
 
 RAM 内であっても instruction image の外である番地へのフェッチはエラーではなく、4 章の drain 規則に従い命令を供給しない。
 
+`redirect` はターゲットのアドレス検査を行わない。`jalr` のターゲット `(rs1Val + imm) & ~1` がミスアラインまたは未マップである場合も PC はそのまま更新され、エラーはリダイレクト先のフェッチで IF が検出し、フェッチされた側の dynamic instruction に付く。error report の pc はターゲット、instr は `--------` である。
+
 error condition を検出しても、その場で error report や error termination を行ってはならない。`rask` は predict-not-taken により間違ったパスの命令を日常的にフェッチするため、検出時の error termination はフラッシュされる運命の命令、たとえばプログラム末尾の向こう側のフェッチをエラーと誤認し、正しい program を異常終了させる。
 
 error condition を検出した命令は、エラー種別をラッチに載せて運び、以降のステージで一切の作用、つまりレジスタ書き込み、RAM 書き込み、device side effect を発火しない。MEM 段でのアドレス検査は書き込みの前に行い、エラー時は side effect を抑止する。その命令が retire した時点で、simulator は PC、命令、エラー種別を error report として出し、error termination する。フラッシュされた命令のエラーは報告されない。
