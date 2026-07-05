@@ -158,8 +158,12 @@ function parseInstruction(
 ): Instruction | null {
   const [opToken, rest = ""] = splitWhitespace(parsed.body);
   const mnemonic = opToken.toLowerCase();
+  // Column is 1-origin in the original line text; the body may start later
+  // because a label prefix was stripped from it.
+  const bodyStart = Math.max(0, parsed.text.indexOf(parsed.body));
+  const opColumn = bodyStart + parsed.body.indexOf(opToken) + 1;
   if (!isAssemblerMnemonic(mnemonic)) {
-    errors.push({ line: parsed.line, column: 1, message: `Unknown instruction "${opToken}".` });
+    errors.push({ line: parsed.line, column: opColumn, message: `Unknown instruction "${opToken}".` });
     return null;
   }
 
@@ -168,7 +172,7 @@ function parseInstruction(
     .map((part) => part.trim())
     .filter(Boolean);
   const fail = (message: string) => {
-    errors.push({ line: parsed.line, column: parsed.body.indexOf(opToken) + 1, message });
+    errors.push({ line: parsed.line, column: opColumn, message });
     return null;
   };
   const base = {
