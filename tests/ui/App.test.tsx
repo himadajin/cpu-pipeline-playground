@@ -108,6 +108,29 @@ describe("App", () => {
     expect(container).toHaveTextContent("[0x80010000]: 0x00 -> 0xff");
   });
 
+  it("shows a paused badge when an ebreak retires", async () => {
+    window.localStorage.setItem(
+      PROGRAM_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "pause",
+          name: "Pause",
+          source: "addi x1, x0, 1\nebreak\naddi x2, x0, 2\n",
+          updatedAt: 0,
+        },
+      ]),
+    );
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    // The ebreak retires (and pauses) at cycle 6.
+    for (let index = 0; index < 5; index += 1) {
+      await userEvent.click(screen.getByRole("button", { name: "Step" }));
+    }
+    expect(screen.queryByText("paused")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Step" }));
+    expect(screen.getByText("paused")).toBeInTheDocument();
+  });
+
   it("collapses dock areas and reopens them from rails", async () => {
     render(<App />);
 
