@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   assemble,
   createSimulation,
@@ -28,15 +28,21 @@ export function useSimulationSession({ programId, source }: { programId: string;
     simSource: source,
     selectedCell: null,
   }));
-  const programChanged = state.programId !== programId;
-  const programResetSimulation = useMemo(
-    () => (programChanged ? createSimulationForSource(source) : null),
-    [programChanged, source],
-  );
-  const simulation = programResetSimulation ?? state.simulation;
-  const selectedCell = programChanged ? null : state.selectedCell;
+  // Program switch: adjust state during render so the reset has a single
+  // path. React re-renders immediately with the fresh state, so everything
+  // derived below is recomputed from it before anything is committed.
+  if (state.programId !== programId) {
+    setState({
+      programId,
+      simulation: createSimulationForSource(source),
+      simSource: source,
+      selectedCell: null,
+    });
+  }
+
+  const { simulation, selectedCell } = state;
   const assembled = useMemo(() => assemble(source), [source]);
-  const invalidated = !programChanged && state.simSource !== source && simulation.current.cycle > 0;
+  const invalidated = state.simSource !== source && simulation.current.cycle > 0;
   const snapshots = simulation.history;
   const timelineCells = snapshots.flatMap((snapshot) => snapshot.timeline);
   const selectedInstruction = selectedCell
@@ -51,22 +57,11 @@ export function useSimulationSession({ programId, source }: { programId: string;
   const selectedEvents = selectedSnapshot?.events.filter((event) => event.seqId === selectedCell?.seqId) ?? [];
   const activeEventSnapshot: CycleSnapshot = selectedSnapshot ?? simulation.current;
 
-  useEffect(() => {
-    if (!programChanged) return;
-    setState({
-      programId,
-      simulation: createSimulationForSource(source),
-      simSource: source,
-      selectedCell: null,
-    });
-  }, [programChanged, programId, source]);
-
   function reset() {
-    const result = assemble(source);
-    if (!result.ok) return;
+    if (!assembled.ok) return;
     setState({
       programId,
-      simulation: createSimulation(result.executionImage),
+      simulation: createSimulation(assembled.executionImage),
       simSource: source,
       selectedCell: null,
     });
@@ -75,39 +70,28 @@ export function useSimulationSession({ programId, source }: { programId: string;
   function step() {
     if (invalidated || !assembled.ok) return;
     setState((current) => {
-      const baseSimulation =
-        current.programId !== programId
-          ? createSimulation(assembled.executionImage)
-          : current.simulation.program.length === 0
-            ? createSimulation(assembled.executionImage)
-            : current.simulation;
-
+      // Rebuild before stepping when nothing has run yet and the source moved
+      // on (edits at cycle 0 never attach to a stale simulation), or when the
+      // last assemble failed and left an empty program.
+      const stale =
+        current.simulation.program.length === 0 ||
+        (current.simSource !== source && current.simulation.current.cycle === 0);
+      const baseSimulation = stale ? createSimulation(assembled.executionImage) : current.simulation;
       return {
         programId,
         simulation: stepSimulation(baseSimulation),
         simSource: source,
-        selectedCell: current.programId === programId ? current.selectedCell : null,
+        selectedCell: current.selectedCell,
       };
     });
   }
 
   function stepBack() {
-    setState((current) => ({
-      ...current,
-      programId,
-      simulation:
-        current.programId === programId ? stepBackSimulation(current.simulation) : createSimulationForSource(source),
-      simSource: current.programId === programId ? current.simSource : source,
-      selectedCell: current.programId === programId ? current.selectedCell : null,
-    }));
+    setState((current) => ({ ...current, simulation: stepBackSimulation(current.simulation) }));
   }
 
   function selectCell(cell: SelectedCell) {
-    setState((current) => ({
-      ...current,
-      programId,
-      selectedCell: current.programId === programId ? cell : null,
-    }));
+    setState((current) => ({ ...current, selectedCell: cell }));
   }
 
   return {
