@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { useEffect, useRef } from "react";
 import type { CycleSnapshot, Instruction, PipelineEvent, SelectedCell } from "../../core";
 
 interface TimelineRow {
@@ -30,13 +31,21 @@ export function Timeline({
   const rows = buildRows(cells, instructionMap);
   const cellMap = new Map(cells.map((cell) => [`${cell.seqId}:${cell.cycle}`, cell]));
   const rowStyle = { gridTemplateColumns: `148px repeat(${cycles.length}, 72px)` };
+  const currentCycleRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    currentCycleRef.current?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [currentCycle]);
   return (
     <section className="timeline-shell">
       <div className="timeline" role="grid" aria-label="Pipeline timeline">
         <div className="timeline-row header-row" style={rowStyle}>
           <div className="instruction-header">Instruction</div>
           {cycles.map((cycle) => (
-            <div className={clsx("cycle-header", cycle === currentCycle && "current")} key={cycle}>
+            <div
+              className={clsx("cycle-header", cycle === currentCycle && "current")}
+              key={cycle}
+              ref={cycle === currentCycle ? currentCycleRef : undefined}
+            >
               {cycle}
             </div>
           ))}

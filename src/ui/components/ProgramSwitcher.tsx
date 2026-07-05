@@ -2,6 +2,7 @@ import clsx from "clsx";
 import { ChevronDown, Copy, FilePlus, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ProgramDocument } from "../../core";
+import { pluralize } from "../format";
 import type { ProgramStatus } from "../hooks/usePrograms";
 import { ToolbarButton } from "./ToolbarButton";
 
@@ -177,6 +178,6 @@ function getProgramStatusLabel(
 ) {
   const status = statuses.get(program.id);
   if (program.id === selectedProgram.id && invalidated) return "modified";
-  if (status && status.errors > 0) return `${status.errors} errors`;
+  if (status && status.errors > 0) return pluralize(status.errors, "error");
   return "ready";
 }

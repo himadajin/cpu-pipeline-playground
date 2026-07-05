@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import type { AssembleResult, CycleSnapshot, SelectedCell } from "../../core";
+import { pluralize } from "../format";
 import { StageBoard } from "./StageBoard";
 import { Timeline } from "./Timeline";
 
@@ -29,8 +30,8 @@ export function PipelinePanel({
           {current.paused && <span className="mini-status warn">paused</span>}
           <span className={clsx("mini-status", !assembled.ok && "bad")}>
             {assembled.ok
-              ? `${assembled.instructions.length} instructions`
-              : `${assembled.errors.length} assemble errors`}
+              ? pluralize(assembled.instructions.length, "instruction")
+              : pluralize(assembled.errors.length, "assemble error", "assemble errors")}
           </span>
           {invalidated && <span className="mini-status warn">simulation invalidated</span>}
         </div>

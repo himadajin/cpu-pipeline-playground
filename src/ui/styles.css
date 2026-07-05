@@ -630,6 +630,8 @@ input {
   margin-top: 5px;
   min-height: 28px;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--text);
   font:
     12px/1.35 ui-monospace,
