@@ -843,17 +843,12 @@ function runExecute(
     case "jal":
       return { result: toInt32(slot.pc + INSTRUCTION_SIZE_BYTES), taken: true, nextPc: slot.instruction.target };
     case "jalr": {
+      // The redirect never inspects the target address (spec §7): a misaligned
+      // target is detected by IF at the redirected fetch and the error belongs
+      // to the fetched-side dynamic instruction, not to the jalr itself.
       const a = read(slot.instruction.rs1);
       const target = toUint32(a + slot.instruction.imm);
       const nextPc = toByteAddress(target - (target % 2));
-      if (!isAlignedInstructionAddress(nextPc)) {
-        return {
-          error: {
-            kind: "fetch-misaligned",
-            message: `${slot.instruction.text} cannot jump to misaligned byte address ${nextPc}.`,
-          },
-        };
-      }
       return { result: toInt32(slot.pc + INSTRUCTION_SIZE_BYTES), taken: true, nextPc };
     }
     case "lui":
@@ -1060,10 +1055,6 @@ function isAlignedWordAddress(address: ByteAddress): boolean {
 
 function isAlignedHalfwordAddress(address: ByteAddress): boolean {
   return address % 2 === 0;
-}
-
-function isAlignedInstructionAddress(address: ByteAddress): boolean {
-  return address % INSTRUCTION_SIZE_BYTES === 0;
 }
 
 function errorEvent(

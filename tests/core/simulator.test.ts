@@ -323,8 +323,16 @@ addi x4, x0, 7
     expect(misaligned.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(
       true,
     );
-    expect(misaligned.current.registers[1]).toBe(0);
-    expect(misaligned.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "fetch-misaligned" });
+    // The jalr itself redirects and retires normally (writing its link value);
+    // the error belongs to the instruction fetched at the misaligned target.
+    expect(misaligned.current.registers[1]).toBe(RESET_LINK + 4);
+    expect(misaligned.current.terminalRecord).toMatchObject({
+      kind: "error",
+      errorKind: "fetch-misaligned",
+      pc: 0x8000000a,
+      instructionWord: null,
+    });
+    expect(formatRetireLog(misaligned.current).split("\n").at(-1)).toBe("ERROR fetch-misaligned 8000000a --------");
   });
 
   it("stalls when jalr depends on a loaded source register", () => {
