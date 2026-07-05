@@ -184,7 +184,6 @@ export interface ExecutionImageInstruction {
   word: InstructionWord;
   instruction?: Instruction;
   source: SourceLine;
-  expandedFrom?: SourceLine;
 }
 
 export interface ExecutionImage {

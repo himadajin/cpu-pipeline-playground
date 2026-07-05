@@ -493,7 +493,3 @@ export function destinationRegister(instruction: Instruction | undefined): Regis
   if (metadata.destination === "rd" && "rd" in instruction) return instruction.rd;
   return null;
 }
-
-export function writesRegister(instruction: Instruction | undefined): boolean {
-  return destinationRegister(instruction) != null;
-}

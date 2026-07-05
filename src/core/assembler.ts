@@ -130,15 +130,12 @@ export function createExecutionImage(
 ): ExecutionImage {
   const imageInstructions: ExecutionImageInstruction[] = instructions.map((instruction, index) => {
     const address = toByteAddress(baseAddress + index * INSTRUCTION_SIZE_BYTES);
-    const expandedFrom =
-      instruction.text.trim().split(/\s+/, 1)[0]?.toLowerCase() !== instruction.op ? instruction.source : undefined;
     return {
       id: instruction.id,
       address,
       word: encodeInstruction(instruction, address),
       instruction,
       source: instruction.source,
-      expandedFrom,
     };
   });
   return {
