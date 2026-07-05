@@ -177,13 +177,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
     // Exit / error retire: younger in-flight instructions occupied their
     // stages this cycle (cells are kept) but are discarded without effects.
     if (registers[0] !== 0) registers[0] = toInt32(0);
-    const stages: StageSlots = {
-      IF: ifSlot,
-      ID: latches.ifId,
-      EX: latches.idEx,
-      MEM: latches.exMem,
-      WB: latches.memWb,
-    };
+    const stages = projectStages(ifSlot, latches);
     const timeline = buildTimeline(cycle, stages, events);
     const occupancyTable = buildOccupancyTable([
       ...state.history.flatMap((snapshot) => snapshot.timeline),
@@ -263,48 +257,28 @@ export function stepSimulation(state: SimulationState): SimulationState {
     }
   }
 
-  const stages: StageSlots = {
-    IF: ifSlot,
-    ID: latches.ifId,
-    EX: latches.idEx,
-    MEM: latches.exMem,
-    WB: latches.memWb,
+  const stages = projectStages(ifSlot, latches);
+
+  const nextIfSlot = stall ? ifSlot : null;
+  const nextLatches: PipelineLatches = {
+    ifId: redirect ? null : stall ? latches.ifId : ifSlot,
+    idEx: redirect || stall ? null : advance(latches.ifId, decodeOutput),
+    exMem: advance(latches.idEx, exOutput),
+    memWb: advance(latches.exMem, memOutput),
   };
 
-  const memWbNext = latches.exMem ? { ...latches.exMem, ...memOutput } : null;
-  const exMemNext = latches.idEx ? { ...latches.idEx, ...exOutput } : null;
-
   let pc = previous.pc;
-  let nextIfSlot: StageSlot | null;
-  let nextLatches: PipelineLatches;
   if (redirect) {
     pc = exOutput?.nextPc ?? previous.pc;
-    nextIfSlot = null;
-    nextLatches = { ifId: null, idEx: null, exMem: exMemNext, memWb: memWbNext };
-  } else if (stall) {
-    nextIfSlot = ifSlot;
-    nextLatches = { ifId: latches.ifId, idEx: null, exMem: exMemNext, memWb: memWbNext };
-  } else {
+  } else if (!stall && ifSlot) {
     // Drain rule: when nothing was fetched, PC stays frozen (spec §4).
-    if (ifSlot) pc = toByteAddress(previous.pc + INSTRUCTION_SIZE_BYTES);
-    nextIfSlot = null;
-    nextLatches = {
-      ifId: ifSlot,
-      idEx: latches.ifId ? { ...latches.ifId, ...decodeOutput } : null,
-      exMem: exMemNext,
-      memWb: memWbNext,
-    };
+    pc = toByteAddress(previous.pc + INSTRUCTION_SIZE_BYTES);
   }
 
   if (registers[0] !== 0) registers[0] = toInt32(0);
   const timeline = buildTimeline(cycle, stages, events);
   const occupancyTable = buildOccupancyTable([...state.history.flatMap((snapshot) => snapshot.timeline), ...timeline]);
-  const halted =
-    nextIfSlot === null &&
-    nextLatches.ifId === null &&
-    nextLatches.idEx === null &&
-    nextLatches.exMem === null &&
-    nextLatches.memWb === null;
+  const halted = [nextIfSlot, ...Object.values(nextLatches)].every((slot) => slot === null);
   const current: CycleSnapshot = {
     cycle,
     pc,
@@ -347,6 +321,21 @@ function cloneLatches(latches: PipelineLatches): PipelineLatches {
 
 function cloneSlot(slot: StageSlot | null): StageSlot | null {
   return slot ? { ...slot } : null;
+}
+
+/** The during-cycle stage view: the IF slot plus each input latch at its consuming stage. */
+function projectStages(ifSlot: StageSlot | null, latches: PipelineLatches): StageSlots {
+  return {
+    IF: ifSlot,
+    ID: latches.ifId,
+    EX: latches.idEx,
+    MEM: latches.exMem,
+    WB: latches.memWb,
+  };
+}
+
+function advance(slot: StageSlot | null, output: Partial<StageSlot> | null): StageSlot | null {
+  return slot ? { ...slot, ...output } : null;
 }
 
 function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress, seqId: number): StageSlot | null {
