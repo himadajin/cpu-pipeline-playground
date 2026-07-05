@@ -47,6 +47,9 @@ describe("App", () => {
     await userEvent.type(editor, "\naddi x11, x0, 2");
     expect(screen.getByText("simulation invalidated")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Select program: .*modified/ })).toBeInTheDocument();
+    // Editing must not allow navigating the stale simulation history (D6).
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Step" })).toBeDisabled();
   });
 
   it("keeps timeline events as markers and moves event logs to the Events tab", async () => {

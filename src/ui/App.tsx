@@ -55,7 +55,7 @@ export function App() {
           <ToolbarButton label="Reset" onClick={session.actions.reset} disabled={!assembled.ok}>
             <RotateCcw size={16} />
           </ToolbarButton>
-          <ToolbarButton label="Back" onClick={session.actions.stepBack}>
+          <ToolbarButton label="Back" onClick={session.actions.stepBack} disabled={invalidated}>
             <StepBack size={16} />
           </ToolbarButton>
           <ToolbarButton
