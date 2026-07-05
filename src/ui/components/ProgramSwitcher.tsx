@@ -43,8 +43,20 @@ export function ProgramSwitcher({
         setEditingId(null);
       }
     }
+    // The rename input handles its own Escape and stops propagation, so this
+    // only fires when the menu itself should close.
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setEditingId(null);
+      }
+    }
     window.addEventListener("pointerdown", handlePointerDown);
-    return () => window.removeEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [open]);
 
   function startRename(program: ProgramDocument) {
@@ -121,7 +133,11 @@ export function ProgramSwitcher({
                       onBlur={commitRename}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") commitRename();
-                        if (event.key === "Escape") setEditingId(null);
+                        if (event.key === "Escape") {
+                          // Cancel the rename only; the menu stays open.
+                          event.stopPropagation();
+                          setEditingId(null);
+                        }
                       }}
                     />
                   ) : (

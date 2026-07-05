@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/ui/App";
@@ -20,6 +20,7 @@ describe("App", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("renders the workbench and steps a program", async () => {
@@ -332,6 +333,66 @@ describe("App", () => {
         "Two-word memory sum",
       ]);
     });
+  });
+
+  it("deletes a program and restores it from the undo toast", async () => {
+    window.localStorage.setItem(
+      PROGRAM_STORAGE_KEY,
+      JSON.stringify([
+        { id: "first", name: "First program", source: "addi x1, x0, 1\n", updatedAt: 0 },
+        { id: "second", name: "Second program", source: "addi x2, x0, 2\n", updatedAt: 0 },
+      ]),
+    );
+    render(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Select program: First program/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete First program" }));
+
+    expect(screen.getByRole("button", { name: /Select program: Second program/ })).toBeInTheDocument();
+    const toast = screen.getByRole("status");
+    expect(toast).toHaveTextContent('Deleted "First program"');
+
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Select program: First program/ })).toBeInTheDocument();
+  });
+
+  it("dismisses the undo toast automatically", () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem(
+      PROGRAM_STORAGE_KEY,
+      JSON.stringify([
+        { id: "first", name: "First program", source: "addi x1, x0, 1\n", updatedAt: 0 },
+        { id: "second", name: "Second program", source: "addi x2, x0, 2\n", updatedAt: 0 },
+      ]),
+    );
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Select program: First program/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete First program" }));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(6100);
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("closes the program menu with Escape but keeps it open when canceling a rename", async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Select program:/ }));
+    expect(screen.getByRole("menu", { name: "Programs" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("menu", { name: "Programs" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Select program:/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Rename Sum four numbers/ }));
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByLabelText("Program name")).not.toBeInTheDocument();
+    expect(screen.getByRole("menu", { name: "Programs" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("menu", { name: "Programs" })).not.toBeInTheDocument();
   });
 
   it("disables delete when only one program exists", async () => {

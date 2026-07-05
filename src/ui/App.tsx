@@ -8,6 +8,7 @@ import { PipelinePanel } from "./components/PipelinePanel";
 import { ProgramSwitcher } from "./components/ProgramSwitcher";
 import { StateStrip } from "./components/StateStrip";
 import { ToolbarButton } from "./components/ToolbarButton";
+import { UndoToast } from "./components/UndoToast";
 import { usePrograms } from "./hooks/usePrograms";
 import { useSimulationSession } from "./hooks/useSimulationSession";
 import { useWorkbenchLayout } from "./hooks/useWorkbenchLayout";
@@ -16,7 +17,7 @@ const STAGE_ORDER: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
 
 export function App() {
   const programLibrary = usePrograms();
-  const { programs, selectedProgram, statuses: programStatuses } = programLibrary;
+  const { programs, selectedProgram, statuses: programStatuses, recentlyDeleted } = programLibrary;
   const session = useSimulationSession({
     programId: selectedProgram?.id ?? "",
     source: selectedProgram?.source ?? "",
@@ -130,6 +131,15 @@ export function App() {
             />
           </section>
         </main>
+
+        {recentlyDeleted && (
+          <UndoToast
+            key={recentlyDeleted.program.id}
+            message={`Deleted "${recentlyDeleted.program.name}"`}
+            onUndo={programLibrary.actions.undoDelete}
+            onDismiss={programLibrary.actions.dismissDeleted}
+          />
+        )}
       </div>
     </Tooltip.Provider>
   );

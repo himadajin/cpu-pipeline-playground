@@ -4,9 +4,13 @@ import { createInitialPrograms, createProgram, duplicateProgram, loadPrograms, s
 
 export type ProgramStatus = { errors: number };
 
+export type DeletedProgram = { program: ProgramDocument; index: number };
+
 export function usePrograms() {
   const [programs, setPrograms] = useState<ProgramDocument[]>(() => loadPrograms());
   const [selectedProgramId, setSelectedProgramId] = useState(() => programs[0]?.id ?? "");
+  // The most recent deletion, kept so an undo toast can restore it in place.
+  const [recentlyDeleted, setRecentlyDeleted] = useState<DeletedProgram | null>(null);
   const selectedProgram = programs.find((program) => program.id === selectedProgramId) ?? programs[0];
   // Memoized per source text so one keystroke reassembles only the edited program.
   const statusCacheRef = useRef(new Map<string, ProgramStatus>());
@@ -71,15 +75,33 @@ export function usePrograms() {
     if (deletedIndex < 0) return;
     const nextPrograms = programs.filter((program) => program.id !== programId);
     setPrograms(nextPrograms);
+    setRecentlyDeleted({ program: programs[deletedIndex], index: deletedIndex });
     if (programId === selectedProgram?.id) {
       setSelectedProgramId(nextPrograms[Math.min(deletedIndex, nextPrograms.length - 1)].id);
     }
+  }
+
+  function undoDelete() {
+    if (!recentlyDeleted) return;
+    const { program, index } = recentlyDeleted;
+    setPrograms((current) => {
+      const next = [...current];
+      next.splice(Math.min(index, next.length), 0, program);
+      return next;
+    });
+    setSelectedProgramId(program.id);
+    setRecentlyDeleted(null);
+  }
+
+  function dismissDeleted() {
+    setRecentlyDeleted(null);
   }
 
   function restoreInitialPrograms() {
     const nextPrograms = createInitialPrograms();
     setPrograms(nextPrograms);
     setSelectedProgramId(nextPrograms[0]?.id ?? "");
+    setRecentlyDeleted(null);
   }
 
   return {
@@ -87,13 +109,16 @@ export function usePrograms() {
     selectedProgram,
     selectedProgramId,
     statuses,
+    recentlyDeleted,
     actions: {
       createNewProgram,
       deleteProgram,
+      dismissDeleted,
       duplicateSelectedProgram,
       renameProgram: (programId: string, name: string) => updateProgramById(programId, { name }),
       restoreInitialPrograms,
       selectProgram,
+      undoDelete,
       updateProgramById,
       updateSelectedProgram,
     },
