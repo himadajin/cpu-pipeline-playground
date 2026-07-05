@@ -289,7 +289,7 @@ function CellPopover({
         S{cell.seqId}, {cell.stage}, cycle {cell.cycle}
         {instruction ? `, line ${instruction.source.line}` : ""}
       </p>
-      <EventList events={events} emptyText="No event is attached to this dynamic instruction in the selected cycle." />
+      <EventList events={events} emptyText="No events in this cycle." />
     </div>
   );
 }

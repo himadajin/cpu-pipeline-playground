@@ -40,7 +40,7 @@ export function PipelinePanel({
             <>
               <span className="mini-status">viewing cycle {cursor}</span>
               <button className="mini-status jump-latest" type="button" onClick={onJumpToLatest}>
-                {"->"} cycle {latestCycle}
+                → cycle {latestCycle}
               </button>
             </>
           ) : (

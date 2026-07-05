@@ -1,40 +1,63 @@
 @import "tailwindcss";
+@import "@radix-ui/colors/sand.css";
+@import "@radix-ui/colors/blue.css";
+@import "@radix-ui/colors/teal.css";
+@import "@radix-ui/colors/amber.css";
+@import "@radix-ui/colors/tomato.css";
+@import "@radix-ui/colors/violet.css";
+@import "@radix-ui/colors/red.css";
 
 /*
  * Design language: an instrument, not a dashboard.
  * - Chrome (frames, buttons, tabs, rules) is achromatic.
  * - Every hue on screen is a CPU meaning: one fixed color per pipeline
  *   stage, plus a dedicated red for errors. There is no decorative accent.
+ * - All color resolves through Radix scales: large areas wear a pale step
+ *   (bg 4 / tint 3) under a dark step-11 text; saturated step-9 solids are
+ *   reserved for small marks (markers, accent borders). The cycle cursor
+ *   flag is the only solid-ink surface.
  * - IBM Plex Mono carries mnemonics, numbers, and UI labels; IBM Plex Sans
  *   is reserved for explanatory prose.
  */
 :root {
-  /* Achromatic bench */
-  --paper: #fafaf7;
+  /* Achromatic bench: Radix Sand */
+  --paper: var(--sand-2);
   --panel: #ffffff;
-  --ink: #22252a;
-  --muted: #6d7378;
-  --soft: #9aa0a6;
-  --line: #e4e5df;
-  --line-strong: #c4c6bd;
-  --hover: #f2f3ee;
-  --active: #e9eae3;
+  --ink: var(--sand-12);
+  --muted: var(--sand-11);
+  --soft: var(--sand-9);
+  --line: var(--sand-5);
+  --line-strong: var(--sand-7);
+  --hover: var(--sand-3);
+  --active: var(--sand-4);
 
-  /* Semantic color: pipeline stages (colorblind-safe, cold-to-warm order) */
-  --st-if: #0072b2;
-  --st-id: #00795c;
-  --st-ex: #e69f00;
-  --st-mem: #d55e00;
-  --st-wb: #6c4fa6;
-  --st-if-tint: #e3eef6;
-  --st-id-tint: #dff0ea;
-  --st-ex-tint: #faeed3;
-  --st-mem-tint: #f9e6d9;
-  --st-wb-tint: #ece6f5;
+  /* Semantic color: pipeline stages (colorblind-safe, cold-to-warm order).
+   * Per stage: solid = step 9, text = step 11, bg = step 4, tint = step 3. */
+  --st-if: var(--blue-9);
+  --st-id: var(--teal-9);
+  --st-ex: var(--amber-9);
+  --st-mem: var(--tomato-9);
+  --st-wb: var(--violet-9);
+  --st-if-text: var(--blue-11);
+  --st-id-text: var(--teal-11);
+  --st-ex-text: var(--amber-11);
+  --st-mem-text: var(--tomato-11);
+  --st-wb-text: var(--violet-11);
+  --st-if-bg: var(--blue-4);
+  --st-id-bg: var(--teal-4);
+  --st-ex-bg: var(--amber-4);
+  --st-mem-bg: var(--tomato-4);
+  --st-wb-bg: var(--violet-4);
+  --st-if-tint: var(--blue-3);
+  --st-id-tint: var(--teal-3);
+  --st-ex-tint: var(--amber-3);
+  --st-mem-tint: var(--tomato-3);
+  --st-wb-tint: var(--violet-3);
 
   /* Semantic color: errors only */
-  --error: #b3261e;
-  --error-tint: #f9e9e8;
+  --error: var(--red-11);
+  --error-solid: var(--red-9);
+  --error-tint: var(--red-3);
 
   --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -365,9 +388,10 @@ button.mini-status.jump-latest:hover {
   color: var(--ink);
 }
 
+/* Active segment stays achromatic; solid ink is reserved for the cursor flag. */
 .name-toggle-option.active {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--active);
+  color: var(--ink);
   font-weight: 600;
 }
 
@@ -781,62 +805,64 @@ button.mini-status.jump-latest:hover {
   font: 600 11px var(--mono);
 }
 
-/* Stage identity is the color system: one fixed hue per stage. */
+/* Stage identity is the color system: one fixed hue per stage, worn as a
+ * pale field under dark same-hue text rather than a saturated solid. */
 .timeline-cell.if {
-  background: var(--st-if);
-  color: #fff;
+  background: var(--st-if-bg);
+  color: var(--st-if-text);
 }
 
 .timeline-cell.id {
-  background: var(--st-id);
-  color: #fff;
+  background: var(--st-id-bg);
+  color: var(--st-id-text);
 }
 
 .timeline-cell.ex {
-  background: var(--st-ex);
-  color: var(--ink);
+  background: var(--st-ex-bg);
+  color: var(--st-ex-text);
 }
 
 .timeline-cell.mem {
-  background: var(--st-mem);
-  color: #fff;
+  background: var(--st-mem-bg);
+  color: var(--st-mem-text);
 }
 
 .timeline-cell.wb {
-  background: var(--st-wb);
-  color: #fff;
+  background: var(--st-wb-bg);
+  color: var(--st-wb-text);
 }
 
 /* Held cells: the same stage repeated (a stall or fetch freeze) reads as a
  * hatched continuation of the stage color instead of a fresh solid latch. */
 .timeline-cell.held.if {
   background: repeating-linear-gradient(315deg, var(--st-if-tint) 0 5px, var(--panel) 5px 10px);
-  color: var(--st-if);
+  color: var(--st-if-text);
 }
 
 .timeline-cell.held.id {
   background: repeating-linear-gradient(315deg, var(--st-id-tint) 0 5px, var(--panel) 5px 10px);
-  color: var(--st-id);
+  color: var(--st-id-text);
 }
 
 .timeline-cell.held.ex {
   background: repeating-linear-gradient(315deg, var(--st-ex-tint) 0 5px, var(--panel) 5px 10px);
-  color: var(--st-ex);
+  color: var(--st-ex-text);
 }
 
 .timeline-cell.held.mem {
   background: repeating-linear-gradient(315deg, var(--st-mem-tint) 0 5px, var(--panel) 5px 10px);
-  color: var(--st-mem);
+  color: var(--st-mem-text);
 }
 
 .timeline-cell.held.wb {
   background: repeating-linear-gradient(315deg, var(--st-wb-tint) 0 5px, var(--panel) 5px 10px);
-  color: var(--st-wb);
+  color: var(--st-wb-text);
 }
 
-/* Cells ahead of the cursor are already-computed future: visible but dimmed. */
+/* Cells ahead of the cursor are already-computed future: visible but dimmed.
+ * Pale fields fade faster than solids did, so dim less than before. */
 .timeline-cell.ahead {
-  opacity: 0.3;
+  opacity: 0.45;
 }
 
 /* Cursor column rails, drawn on every cell in the column. */
@@ -912,8 +938,8 @@ button.mini-status.jump-latest:hover {
 }
 
 .event-marker.error {
-  border-color: var(--error);
-  background: var(--error);
+  border-color: var(--error-solid);
+  background: var(--error-solid);
 }
 
 .event-marker.more {
@@ -1016,7 +1042,7 @@ button.mini-status.jump-latest:hover {
 }
 
 .event-detail.error {
-  border-left-color: var(--error);
+  border-left-color: var(--error-solid);
 }
 
 .diff-row {
