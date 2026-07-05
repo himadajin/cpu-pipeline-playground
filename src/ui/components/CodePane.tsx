@@ -1,4 +1,3 @@
-import clsx from "clsx";
 import { X } from "lucide-react";
 import { lazy, Suspense, type PointerEvent as ReactPointerEvent } from "react";
 import type { ExecutedLine } from "../asmLanguage";
@@ -47,7 +46,7 @@ export function CodePane({
         <span className="pane-title">Code</span>
         <div className="header-status">
           {invalidated && <span className="mini-status warn">modified after run</span>}
-          <span className={clsx("mini-status", lintCount > 0 && "bad")}>{pluralize(lintCount, "error")}</span>
+          {lintCount > 0 && <span className="mini-status bad">{pluralize(lintCount, "error")}</span>}
           <button
             className="panel-close-button"
             type="button"
