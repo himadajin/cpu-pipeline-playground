@@ -73,7 +73,8 @@ export function createSimulation(
     pc: executionImage.baseAddress,
     nextSeqId: 0,
     latches: emptyLatches(),
-    stages: projectStages(emptyLatches()),
+    ifSlot: null,
+    stages: emptyStages(),
     registers,
     memory: normalizeInitialMemory(initialState.memory ?? {}),
     consoleOutput: [],
@@ -160,14 +161,21 @@ export function stepSimulation(state: SimulationState): SimulationState {
   const registerDiffs: RegisterDiff[] = [];
   const memoryDiffs: MemoryDiff[] = [];
   const latches = cloneLatches(previous.latches);
-  const slots = projectStages(latches);
+  let ifSlot = cloneSlot(previous.ifSlot);
 
-  const retireOutput = retireWriteback(cycle, slots.WB, registers, registerDiffs, retireLog, events);
+  const retireOutput = retireWriteback(cycle, latches.memWb, registers, registerDiffs, retireLog, events);
   if (retireOutput.terminalRecord) {
+    // Exit / error retire: younger in-flight instructions occupied their
+    // stages this cycle (cells are kept) but are discarded without effects.
     if (registers[0] !== 0) registers[0] = toInt32(0);
-    const terminalLatches = { ...emptyLatches(), memWb: slots.WB };
-    const terminalStages = projectStages(terminalLatches);
-    const timeline = buildTimeline(cycle, terminalStages, events);
+    const stages: StageSlots = {
+      IF: ifSlot,
+      ID: latches.ifId,
+      EX: latches.idEx,
+      MEM: latches.exMem,
+      WB: latches.memWb,
+    };
+    const timeline = buildTimeline(cycle, stages, events);
     const occupancyTable = buildOccupancyTable([
       ...state.history.flatMap((snapshot) => snapshot.timeline),
       ...timeline,
@@ -177,7 +185,8 @@ export function stepSimulation(state: SimulationState): SimulationState {
       pc: previous.pc,
       nextSeqId: previous.nextSeqId,
       latches: emptyLatches(),
-      stages: terminalStages,
+      ifSlot: null,
+      stages,
       registers,
       memory,
       consoleOutput,
@@ -194,36 +203,42 @@ export function stepSimulation(state: SimulationState): SimulationState {
     return { ...state, history: [...state.history, current], current };
   }
 
-  const memOutput = runMemory(cycle, slots.MEM, memory, consoleOutput, memoryDiffs, events);
-  const exOutput = runExecute(cycle, slots.EX, registers, events);
-  const decodeOutput = runDecode(cycle, slots.ID, events);
+  const memOutput = runMemory(cycle, latches.exMem, memory, consoleOutput, memoryDiffs, events);
+  const exOutput = runExecute(cycle, latches.idEx, registers, events);
+  const decodeOutput = runDecode(cycle, latches.ifId, events);
 
-  const flush = Boolean(exOutput?.taken);
-  const stall = !flush && shouldStallForDataHazard(slots.ID, [slots.EX, slots.MEM, slots.WB]);
-  if (stall && slots.ID) {
+  let nextSeqId = previous.nextSeqId;
+  if (!ifSlot) {
+    ifSlot = fetchInstruction(state.executionImage, previous.pc, nextSeqId);
+    if (ifSlot) nextSeqId += 1;
+  }
+
+  const redirect = Boolean(exOutput?.taken);
+  const stall = !redirect && shouldStallForDataHazard(latches.ifId, [latches.idEx, latches.exMem, latches.memWb]);
+  if (stall && latches.ifId) {
     events.push({
-      id: eventId(cycle, "stall", slots.ID.instructionId),
+      id: eventId(cycle, "stall", latches.ifId.instructionId),
       cycle,
-      seqId: slots.ID.seqId,
-      instructionId: slots.ID.instructionId,
+      seqId: latches.ifId.seqId,
+      instructionId: latches.ifId.instructionId,
       kind: "stall",
       label: "stall",
-      message: `${slots.ID.instruction.text} waits for an older writer to retire.`,
+      message: `${latches.ifId.instruction.text} waits for an older writer to retire.`,
     });
   }
 
-  if (flush && slots.EX) {
+  if (redirect && latches.idEx) {
     events.push({
-      id: eventId(cycle, "branch", slots.EX.instructionId),
+      id: eventId(cycle, "branch", latches.idEx.instructionId),
       cycle,
-      seqId: slots.EX.seqId,
-      instructionId: slots.EX.instructionId,
+      seqId: latches.idEx.seqId,
+      instructionId: latches.idEx.instructionId,
       kind: "branch",
       label: "branch",
-      message: `${slots.EX.instruction.text} redirects fetch to byte address ${exOutput?.nextPc ?? 0}.`,
+      message: `${latches.idEx.instruction.text} redirects fetch to byte address ${exOutput?.nextPc ?? 0}.`,
       detail: { target: exOutput?.nextPc ?? 0 },
     });
-    for (const flushed of [slots.IF, slots.ID]) {
+    for (const flushed of [ifSlot, latches.ifId]) {
       if (flushed) {
         events.push({
           id: eventId(cycle, "flush", flushed.instructionId),
@@ -239,38 +254,55 @@ export function stepSimulation(state: SimulationState): SimulationState {
     }
   }
 
-  const nextLatches: PipelineLatches = {
-    memWb: memOutput ? { ...slots.MEM!, ...memOutput } : slots.MEM,
-    exMem: exOutput ? { ...slots.EX!, ...exOutput } : slots.EX,
-    idEx: flush || stall ? null : decodeOutput ? { ...slots.ID!, ...decodeOutput } : slots.ID,
-    ifId: flush ? null : stall ? slots.ID : slots.IF,
-    fetch: flush ? null : stall ? slots.IF : null,
+  const stages: StageSlots = {
+    IF: ifSlot,
+    ID: latches.ifId,
+    EX: latches.idEx,
+    MEM: latches.exMem,
+    WB: latches.memWb,
   };
 
-  let nextSeqId = previous.nextSeqId;
+  const memWbNext = latches.exMem ? { ...latches.exMem, ...memOutput } : null;
+  const exMemNext = latches.idEx ? { ...latches.idEx, ...exOutput } : null;
 
   let pc = previous.pc;
-  if (flush) {
+  let nextIfSlot: StageSlot | null;
+  let nextLatches: PipelineLatches;
+  if (redirect) {
     pc = exOutput?.nextPc ?? previous.pc;
-  } else if (!stall) {
-    const fetched = fetchInstruction(state.executionImage, previous.pc, nextSeqId);
-    nextLatches.fetch = fetched;
-    if (fetched) nextSeqId += 1;
-    pc = fetched ? toByteAddress(previous.pc + INSTRUCTION_SIZE_BYTES) : previous.pc;
+    nextIfSlot = null;
+    nextLatches = { ifId: null, idEx: null, exMem: exMemNext, memWb: memWbNext };
+  } else if (stall) {
+    nextIfSlot = ifSlot;
+    nextLatches = { ifId: latches.ifId, idEx: null, exMem: exMemNext, memWb: memWbNext };
+  } else {
+    // Drain rule: when nothing was fetched, PC stays frozen (spec §4).
+    if (ifSlot) pc = toByteAddress(previous.pc + INSTRUCTION_SIZE_BYTES);
+    nextIfSlot = null;
+    nextLatches = {
+      ifId: ifSlot,
+      idEx: latches.ifId ? { ...latches.ifId, ...decodeOutput } : null,
+      exMem: exMemNext,
+      memWb: memWbNext,
+    };
   }
 
   if (registers[0] !== 0) registers[0] = toInt32(0);
-  const projectedStages = projectStages(nextLatches);
-  const timeline = buildTimeline(cycle, projectedStages, events);
+  const timeline = buildTimeline(cycle, stages, events);
   const occupancyTable = buildOccupancyTable([...state.history.flatMap((snapshot) => snapshot.timeline), ...timeline]);
   const halted =
-    isOutsideInstructionImage(state.executionImage, pc) && STAGES.every((stage) => projectedStages[stage] === null);
+    nextIfSlot === null &&
+    nextLatches.ifId === null &&
+    nextLatches.idEx === null &&
+    nextLatches.exMem === null &&
+    nextLatches.memWb === null;
   const current: CycleSnapshot = {
     cycle,
     pc,
     nextSeqId,
     latches: nextLatches,
-    stages: projectedStages,
+    ifSlot: nextIfSlot,
+    stages,
     registers,
     memory,
     consoleOutput,
@@ -292,12 +324,11 @@ function emptyStages(): StageSlots {
 }
 
 function emptyLatches(): PipelineLatches {
-  return { fetch: null, ifId: null, idEx: null, exMem: null, memWb: null };
+  return { ifId: null, idEx: null, exMem: null, memWb: null };
 }
 
 function cloneLatches(latches: PipelineLatches): PipelineLatches {
   return {
-    fetch: cloneSlot(latches.fetch),
     ifId: cloneSlot(latches.ifId),
     idEx: cloneSlot(latches.idEx),
     exMem: cloneSlot(latches.exMem),
@@ -307,16 +338,6 @@ function cloneLatches(latches: PipelineLatches): PipelineLatches {
 
 function cloneSlot(slot: StageSlot | null): StageSlot | null {
   return slot ? { ...slot } : null;
-}
-
-function projectStages(latches: PipelineLatches): StageSlots {
-  return {
-    IF: latches.fetch,
-    ID: latches.ifId,
-    EX: latches.idEx,
-    MEM: latches.exMem,
-    WB: latches.memWb,
-  };
 }
 
 function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress, seqId: number): StageSlot | null {
@@ -394,11 +415,6 @@ function invalidInstruction(id: number, source: { line: number; text: string }, 
     source,
     text,
   };
-}
-
-function isOutsideInstructionImage(executionImage: ExecutionImage, pc: ByteAddress): boolean {
-  const endAddress = executionImage.baseAddress + executionImage.instructions.length * INSTRUCTION_SIZE_BYTES;
-  return pc < executionImage.baseAddress || pc >= endAddress;
 }
 
 function retireWriteback(
@@ -902,23 +918,6 @@ function buildTimeline(cycle: number, stages: StageSlots, events: PipelineEvent[
       events: events.filter((event) => event.seqId === slot.seqId),
     });
   });
-  for (const event of events) {
-    if (event.kind !== "flush" || event.instructionId == null) continue;
-    const seqId = event.seqId ?? event.instructionId;
-    if (!cells.some((cell) => cell.seqId === seqId && cell.cycle === cycle)) {
-      const flushed = Object.values(stages).find((slot) => slot?.seqId === seqId);
-      const pc =
-        typeof event.detail?.pc === "number" ? toByteAddress(event.detail.pc) : (flushed?.pc ?? toByteAddress(0));
-      cells.push({
-        cycle,
-        seqId,
-        pc,
-        instructionId: event.instructionId,
-        stage: "ID",
-        events: [event],
-      });
-    }
-  }
   return cells;
 }
 

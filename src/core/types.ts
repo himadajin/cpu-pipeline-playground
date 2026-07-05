@@ -280,7 +280,6 @@ export interface StageSlot {
 export type StageSlots = Record<StageName, StageSlot | null>;
 
 export interface PipelineLatches {
-  fetch: StageSlot | null;
   ifId: StageSlot | null;
   idEx: StageSlot | null;
   exMem: StageSlot | null;
@@ -300,7 +299,11 @@ export interface CycleSnapshot {
   cycle: number;
   pc: ByteAddress;
   nextSeqId: number;
+  /** End-of-cycle latch values (state handed to the next cycle). */
   latches: PipelineLatches;
+  /** End-of-cycle IF stage slot; non-null only while a stall holds the fetched instruction. */
+  ifSlot: StageSlot | null;
+  /** What each stage processed during this cycle. Not a projection of `latches`. */
   stages: StageSlots;
   registers: RegisterFile;
   memory: ByteMemory;

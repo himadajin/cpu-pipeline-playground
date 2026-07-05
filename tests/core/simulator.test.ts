@@ -146,14 +146,14 @@ addi x3, x0, 7
     expect(simulation.current.registers[3]).toBe(7);
   });
 
-  it("projects explicit pipeline latches to stages while keeping bubbles distinct from real nop", () => {
+  it("separates the during-cycle stage view from end-of-cycle latches while keeping bubbles distinct from real nop", () => {
     const simulation = stepSimulation(createSimulation(assembled("nop\naddi x1, x0, 1\n")));
 
-    expect(simulation.current.latches.fetch?.instruction.text).toBe("nop");
     expect(simulation.current.stages.IF?.instruction.text).toBe("nop");
     expect(simulation.current.stages.ID).toBeNull();
-    expect(simulation.current.latches.ifId).toBeNull();
-    expect(simulation.current.latches.fetch?.instruction).toMatchObject({ op: "addi", rd: 0, rs1: 0, imm: 0 });
+    expect(simulation.current.ifSlot).toBeNull();
+    expect(simulation.current.latches.ifId?.instruction.text).toBe("nop");
+    expect(simulation.current.latches.ifId?.instruction).toMatchObject({ op: "addi", rd: 0, rs1: 0, imm: 0 });
   });
 
   it("assigns seqId at fetch and does not reuse ids after a flush", () => {
@@ -197,18 +197,18 @@ addi x8, x0, 2
       0: "FDXMW",
       1: ".FDDDDXMW",
       2: "..FFFFDDDDXMW",
-      3: "......FFFFDD",
-      4: "..........FD",
-      5: "............FDXMW",
+      3: "......FFFFD",
+      4: "..........F",
+      5: "...........FDXMW",
     });
     expect(formatPipelineOccupancyTable(simulation.current)).toBe(
       [
         "S0 80000000 FDXMW",
         "S1 80000004 .FDDDDXMW",
         "S2 80000008 ..FFFFDDDDXMW",
-        "S3 8000000c ......FFFFDD",
-        "S4 80000010 ..........FD",
-        "S5 80000010 ............FDXMW",
+        "S3 8000000c ......FFFFD",
+        "S4 80000010 ..........F",
+        "S5 80000010 ...........FDXMW",
       ].join("\n"),
     );
     expect(formatRetireLog(simulation.current)).toBe(

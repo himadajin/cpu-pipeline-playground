@@ -67,7 +67,8 @@ describe("App", () => {
   it("shows registers in fixed order and only highlights changed registers", async () => {
     render(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
-    for (let index = 0; index < 6; index += 1) {
+    // x1 retires (W stage) at cycle 5, which is when its register diff is recorded.
+    for (let index = 0; index < 5; index += 1) {
       await userEvent.click(screen.getByRole("button", { name: "Step" }));
     }
     await userEvent.click(screen.getByRole("button", { name: "Registers" }));
@@ -96,7 +97,8 @@ describe("App", () => {
     );
     const { container } = render(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
-    for (let index = 0; index < 10; index += 1) {
+    // The sw reaches MEM at cycle 9, which is when the memory diff is recorded.
+    for (let index = 0; index < 9; index += 1) {
       await userEvent.click(screen.getByRole("button", { name: "Step" }));
     }
     await userEvent.click(screen.getByRole("button", { name: "Memory" }));
