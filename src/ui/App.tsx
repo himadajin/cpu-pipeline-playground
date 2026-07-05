@@ -114,7 +114,7 @@ export function App() {
               selectedSnapshot={selectedSnapshot}
               selectedTimelineCell={selectedTimelineCell}
               selectedEvents={selectedEvents}
-              current={simulation.current}
+              stateSnapshot={selectedSnapshot ?? simulation.current}
             />
           </aside>
         </main>

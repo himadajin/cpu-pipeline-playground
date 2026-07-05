@@ -17,7 +17,7 @@ export function RightDock({
   selectedSnapshot,
   selectedTimelineCell,
   selectedEvents,
-  current,
+  stateSnapshot,
 }: {
   activeTab: RightTab;
   open: boolean;
@@ -28,7 +28,8 @@ export function RightDock({
   selectedSnapshot: CycleSnapshot | undefined;
   selectedTimelineCell: CycleSnapshot["timeline"][number] | null;
   selectedEvents: PipelineEvent[];
-  current: CycleSnapshot;
+  /** Snapshot shown by the Registers / Memory tabs: the selected cycle when a cell is selected, otherwise the current cycle. */
+  stateSnapshot: CycleSnapshot;
 }) {
   if (!open) {
     return (
@@ -99,8 +100,8 @@ export function RightDock({
             selectedEvents={selectedEvents}
           />
         )}
-        {activeTab === "registers" && <RegistersPanel current={current} />}
-        {activeTab === "memory" && <MemoryPanel current={current} />}
+        {activeTab === "registers" && <RegistersPanel snapshot={stateSnapshot} />}
+        {activeTab === "memory" && <MemoryPanel snapshot={stateSnapshot} />}
       </div>
     </section>
   );
@@ -138,15 +139,15 @@ function InspectorPanel({
   );
 }
 
-function RegistersPanel({ current }: { current: CycleSnapshot }) {
-  const changedRegisters = new Set<number>(current.registerDiffs.map((diff) => diff.register));
+function RegistersPanel({ snapshot }: { snapshot: CycleSnapshot }) {
+  const changedRegisters = new Set<number>(snapshot.registerDiffs.map((diff) => diff.register));
 
   return (
     <section className="state-panel">
-      {current.registerDiffs.length > 0 && (
+      {snapshot.registerDiffs.length > 0 && (
         <div className="inspector-section">
           <h2>Register Diffs</h2>
-          {current.registerDiffs.map((diff) => (
+          {snapshot.registerDiffs.map((diff) => (
             <div className="diff-row" key={diff.register}>
               x{diff.register}: {formatValue(diff.before)} {"->"} {formatValue(diff.after)}
             </div>
@@ -154,7 +155,7 @@ function RegistersPanel({ current }: { current: CycleSnapshot }) {
         </div>
       )}
       <div className="register-grid" aria-label="Registers">
-        {current.registers.map((value, index) => (
+        {snapshot.registers.map((value, index) => (
           <div className={clsx("register-cell", changedRegisters.has(index) && "changed")} key={index}>
             <span className="register-name">x{index}</span>
             <span className="register-value-stack">
@@ -168,15 +169,15 @@ function RegistersPanel({ current }: { current: CycleSnapshot }) {
   );
 }
 
-function MemoryPanel({ current }: { current: CycleSnapshot }) {
-  const entries = groupMemoryWords(current.memory);
+function MemoryPanel({ snapshot }: { snapshot: CycleSnapshot }) {
+  const entries = groupMemoryWords(snapshot.memory);
 
   return (
     <section className="state-panel">
-      {current.memoryDiffs.length > 0 && (
+      {snapshot.memoryDiffs.length > 0 && (
         <div className="inspector-section">
           <h2>Memory Diffs</h2>
-          {current.memoryDiffs.map((diff) => (
+          {snapshot.memoryDiffs.map((diff) => (
             <div className="diff-row" key={diff.address}>
               [{toHex32(diff.address)}]: {formatByte(diff.before)} {"->"} {formatByte(diff.after)}
             </div>
