@@ -269,6 +269,8 @@ export interface StageSlot {
   instruction: Instruction;
   decodeError?: DecodeError;
   error?: SimulatorError;
+  rs1Val?: Int32;
+  rs2Val?: Int32;
   result?: Int32;
   address?: ByteAddress;
   storeValue?: Int32;

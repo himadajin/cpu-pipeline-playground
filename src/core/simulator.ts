@@ -207,8 +207,8 @@ export function stepSimulation(state: SimulationState): SimulationState {
   }
 
   const memOutput = runMemory(cycle, latches.exMem, memory, consoleOutput, memoryDiffs, events);
-  const exOutput = runExecute(cycle, latches.idEx, registers, events);
-  const decodeOutput = runDecode(cycle, latches.ifId, events);
+  const exOutput = runExecute(latches.idEx);
+  const decodeOutput = runDecode(latches.ifId, registers);
 
   let nextSeqId = previous.nextSeqId;
   if (!ifSlot) {
@@ -391,9 +391,13 @@ function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress, seqId
   };
 }
 
-function runDecode(_cycle: number, slot: StageSlot | null, _events: PipelineEvent[]): Partial<StageSlot> | null {
-  if (!slot?.decodeError) return null;
-  return { error: slot.decodeError };
+function runDecode(slot: StageSlot | null, registers: RegisterFile): Partial<StageSlot> | null {
+  if (!slot) return null;
+  const output: Partial<StageSlot> = {};
+  if (slot.decodeError) output.error = slot.decodeError;
+  if ("rs1" in slot.instruction) output.rs1Val = readRegister(slot.instruction.rs1, registers);
+  if ("rs2" in slot.instruction) output.rs2Val = readRegister(slot.instruction.rs2, registers);
+  return output;
 }
 
 function instructionFromImageEntry(entry: ExecutionImageInstruction): Instruction {
@@ -674,101 +678,98 @@ function runMemory(
   return {};
 }
 
-function runExecute(
-  _cycle: number,
-  slot: StageSlot | null,
-  registers: RegisterFile,
-  _events: PipelineEvent[],
-): Partial<StageSlot> | null {
+function runExecute(slot: StageSlot | null): Partial<StageSlot> | null {
   if (!slot) return null;
   if (slot.error) return {};
-  const read = (register: RegisterIndex) => readRegister(register, registers);
+  // EX is a pure function of the ID/EX latch: operands were read by ID (spec §5).
+  const rs1Val = slot.rs1Val ?? toInt32(0);
+  const rs2Val = slot.rs2Val ?? toInt32(0);
 
   switch (slot.instruction.op) {
     case "add": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return { result: toInt32(a + b) };
     }
     case "sub": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return { result: toInt32(a - b) };
     }
     case "slt": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return { result: toInt32(toInt32(a) < toInt32(b) ? 1 : 0) };
     }
     case "sltu": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return { result: toInt32(toUint32(a) < toUint32(b) ? 1 : 0) };
     }
     case "and": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return { result: toInt32(a & b) };
     }
     case "or": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return { result: toInt32(a | b) };
     }
     case "xor": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return { result: toInt32(a ^ b) };
     }
     case "sll": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return { result: toInt32(a << (b & 31)) };
     }
     case "srl": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return { result: toInt32(a >>> (b & 31)) };
     }
     case "sra": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return { result: toInt32(a >> (b & 31)) };
     }
     case "addi": {
-      const a = read(slot.instruction.rs1);
+      const a = rs1Val;
       return { result: toInt32(a + slot.instruction.imm) };
     }
     case "slti": {
-      const a = read(slot.instruction.rs1);
+      const a = rs1Val;
       return { result: toInt32(toInt32(a) < toInt32(slot.instruction.imm) ? 1 : 0) };
     }
     case "sltiu": {
-      const a = read(slot.instruction.rs1);
+      const a = rs1Val;
       return { result: toInt32(toUint32(a) < toUint32(slot.instruction.imm) ? 1 : 0) };
     }
     case "andi": {
-      const a = read(slot.instruction.rs1);
+      const a = rs1Val;
       return { result: toInt32(a & slot.instruction.imm) };
     }
     case "ori": {
-      const a = read(slot.instruction.rs1);
+      const a = rs1Val;
       return { result: toInt32(a | slot.instruction.imm) };
     }
     case "xori": {
-      const a = read(slot.instruction.rs1);
+      const a = rs1Val;
       return { result: toInt32(a ^ slot.instruction.imm) };
     }
     case "slli": {
-      const a = read(slot.instruction.rs1);
+      const a = rs1Val;
       return { result: toInt32(a << slot.instruction.imm) };
     }
     case "srli": {
-      const a = read(slot.instruction.rs1);
+      const a = rs1Val;
       return { result: toInt32(a >>> slot.instruction.imm) };
     }
     case "srai": {
-      const a = read(slot.instruction.rs1);
+      const a = rs1Val;
       return { result: toInt32(a >> slot.instruction.imm) };
     }
     case "lb":
@@ -776,59 +777,59 @@ function runExecute(
     case "lh":
     case "lhu":
     case "lw": {
-      const a = read(slot.instruction.rs1);
+      const a = rs1Val;
       return { address: toByteAddress(toUint32(a + slot.instruction.imm)) };
     }
     case "sb":
     case "sh":
     case "sw": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return { address: toByteAddress(toUint32(a + slot.instruction.imm)), storeValue: b };
     }
     case "beq": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return {
         taken: a === b,
         nextPc: a === b ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
       };
     }
     case "bne": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return {
         taken: a !== b,
         nextPc: a !== b ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
       };
     }
     case "blt": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return {
         taken: toInt32(a) < toInt32(b),
         nextPc: toInt32(a) < toInt32(b) ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
       };
     }
     case "bge": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return {
         taken: toInt32(a) >= toInt32(b),
         nextPc: toInt32(a) >= toInt32(b) ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
       };
     }
     case "bltu": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return {
         taken: toUint32(a) < toUint32(b),
         nextPc: toUint32(a) < toUint32(b) ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
       };
     }
     case "bgeu": {
-      const a = read(slot.instruction.rs1);
-      const b = read(slot.instruction.rs2);
+      const a = rs1Val;
+      const b = rs2Val;
       return {
         taken: toUint32(a) >= toUint32(b),
         nextPc: toUint32(a) >= toUint32(b) ? slot.instruction.target : toByteAddress(slot.pc + INSTRUCTION_SIZE_BYTES),
@@ -840,7 +841,7 @@ function runExecute(
       // The redirect never inspects the target address (spec §7): a misaligned
       // target is detected by IF at the redirected fetch and the error belongs
       // to the fetched-side dynamic instruction, not to the jalr itself.
-      const a = read(slot.instruction.rs1);
+      const a = rs1Val;
       const target = toUint32(a + slot.instruction.imm);
       const nextPc = toByteAddress(target - (target % 2));
       return { result: toInt32(slot.pc + INSTRUCTION_SIZE_BYTES), taken: true, nextPc };
