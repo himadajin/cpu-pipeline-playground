@@ -26,6 +26,7 @@ export function PipelinePanel({
         <span>Pipeline</span>
         <div className="pipeline-status">
           <span className="mini-status">cycle {current.cycle}</span>
+          {current.paused && <span className="mini-status warn">paused</span>}
           <span className={clsx("mini-status", !assembled.ok && "bad")}>
             {assembled.ok
               ? `${assembled.instructions.length} instructions`

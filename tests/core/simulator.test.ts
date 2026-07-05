@@ -146,14 +146,14 @@ addi x3, x0, 7
     expect(simulation.current.registers[3]).toBe(7);
   });
 
-  it("projects explicit pipeline latches to stages while keeping bubbles distinct from real nop", () => {
+  it("separates the during-cycle stage view from end-of-cycle latches while keeping bubbles distinct from real nop", () => {
     const simulation = stepSimulation(createSimulation(assembled("nop\naddi x1, x0, 1\n")));
 
-    expect(simulation.current.latches.fetch?.instruction.text).toBe("nop");
-    expect(simulation.current.stages.IF?.instruction.text).toBe("nop");
+    expect(simulation.current.stages.IF?.instruction?.text).toBe("nop");
     expect(simulation.current.stages.ID).toBeNull();
-    expect(simulation.current.latches.ifId).toBeNull();
-    expect(simulation.current.latches.fetch?.instruction).toMatchObject({ op: "addi", rd: 0, rs1: 0, imm: 0 });
+    expect(simulation.current.ifSlot).toBeNull();
+    expect(simulation.current.latches.ifId?.instruction?.text).toBe("nop");
+    expect(simulation.current.latches.ifId?.instruction).toMatchObject({ op: "addi", rd: 0, rs1: 0, imm: 0 });
   });
 
   it("assigns seqId at fetch and does not reuse ids after a flush", () => {
@@ -170,7 +170,7 @@ addi x2, x0, 2
     const slots = simulation.history
       .flatMap((snapshot) => Object.values(snapshot.stages))
       .filter((slot) => slot != null);
-    const seenBySeqId = new Map(slots.map((slot) => [slot.seqId, slot.instruction.text]));
+    const seenBySeqId = new Map(slots.map((slot) => [slot.seqId, slot.text]));
 
     expect(Array.from(seenBySeqId.keys())).toEqual([0, 1, 2, 3]);
     expect(seenBySeqId.get(1)).toBe("addi x1, x0, 1");
@@ -197,18 +197,18 @@ addi x8, x0, 2
       0: "FDXMW",
       1: ".FDDDDXMW",
       2: "..FFFFDDDDXMW",
-      3: "......FFFFDD",
-      4: "..........FD",
-      5: "............FDXMW",
+      3: "......FFFFD",
+      4: "..........F",
+      5: "...........FDXMW",
     });
     expect(formatPipelineOccupancyTable(simulation.current)).toBe(
       [
         "S0 80000000 FDXMW",
         "S1 80000004 .FDDDDXMW",
         "S2 80000008 ..FFFFDDDDXMW",
-        "S3 8000000c ......FFFFDD",
-        "S4 80000010 ..........FD",
-        "S5 80000010 ............FDXMW",
+        "S3 8000000c ......FFFFD",
+        "S4 80000010 ..........F",
+        "S5 80000010 ...........FDXMW",
       ].join("\n"),
     );
     expect(formatRetireLog(simulation.current)).toBe(
@@ -323,8 +323,16 @@ addi x4, x0, 7
     expect(misaligned.history.flatMap((snapshot) => snapshot.events).some((event) => event.kind === "error")).toBe(
       true,
     );
-    expect(misaligned.current.registers[1]).toBe(0);
-    expect(misaligned.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "fetch-misaligned" });
+    // The jalr itself redirects and retires normally (writing its link value);
+    // the error belongs to the instruction fetched at the misaligned target.
+    expect(misaligned.current.registers[1]).toBe(RESET_LINK + 4);
+    expect(misaligned.current.terminalRecord).toMatchObject({
+      kind: "error",
+      errorKind: "fetch-misaligned",
+      pc: 0x8000000a,
+      instructionWord: null,
+    });
+    expect(formatRetireLog(misaligned.current).split("\n").at(-1)).toBe("ERROR fetch-misaligned 8000000a --------");
   });
 
   it("stalls when jalr depends on a loaded source register", () => {
@@ -691,11 +699,65 @@ addi x3, x2, 1
     const exitSlot = exit.history
       .flatMap((snapshot) => Object.values(snapshot.stages))
       .find((slot) => slot?.exitRequest);
-    expect(exitSlot?.exitRequest).toEqual({ code: 0, success: true });
+    expect(exitSlot?.exitRequest).toEqual({ code: 0 });
     expect(exit.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([]);
     expect(exit.current.terminalRecord).toEqual({ kind: "exit", code: 0 });
     expect(formatRetireLog(exit.current)).toContain("store w [00100000]=00005555");
     expect(formatRetireLog(exit.current).split("\n").at(-1)).toBe("EXIT 0");
+  });
+
+  it("classifies undefined accesses inside device regions as mmio violations and outside as unmapped", () => {
+    const errorKindFor = (source: string, registers: Record<number, number>) => {
+      const simulation = runSimulation(createSimulation(assembled(source), { registers }));
+      expect(simulation.current.terminalRecord?.kind).toBe("error");
+      return simulation.current.terminalRecord?.kind === "error"
+        ? simulation.current.terminalRecord.errorKind
+        : undefined;
+    };
+
+    // Inside the UART region but not a defined register access.
+    expect(errorKindFor("sw x2, 0(x1)\n", { 1: 0x10000004, 2: 1 })).toBe("mmio-violation");
+    expect(errorKindFor("sb x2, 0(x1)\n", { 1: 0x10000fff, 2: 1 })).toBe("mmio-violation");
+    expect(errorKindFor("lb x2, 0(x1)\n", { 1: 0x10000008 })).toBe("mmio-violation");
+    // Inside the exit region but not the exit register.
+    expect(errorKindFor("sw x2, 0(x1)\n", { 1: 0x00100004, 2: 0x5555 })).toBe("mmio-violation");
+    // Just past the region limits, and below the exit region: unmapped.
+    expect(errorKindFor("sb x2, 0(x1)\n", { 1: 0x10001000, 2: 1 })).toBe("mem-unmapped");
+    expect(errorKindFor("sb x2, 0(x1)\n", { 1: 0x000fffff, 2: 1 })).toBe("mem-unmapped");
+    expect(errorKindFor("sb x2, 0(x1)\n", { 1: 0x00101000, 2: 1 })).toBe("mem-unmapped");
+  });
+
+  it("exits with the failure code from the high half of a 0x3333 exit store", () => {
+    const simulation = runSimulation(
+      createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 0x00013333 } }),
+    );
+    expect(simulation.current.terminalRecord).toEqual({ kind: "exit", code: 1 });
+    expect(formatRetireLog(simulation.current).split("\n").at(-1)).toBe("EXIT 1");
+  });
+
+  it("treats non-word stores and undefined values on the exit device as mmio violations", () => {
+    const byteStore = runSimulation(
+      createSimulation(assembled("sb x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 0x55 } }),
+    );
+    expect(byteStore.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "mmio-violation" });
+
+    const halfStore = runSimulation(
+      createSimulation(assembled("sh x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 0x5555 } }),
+    );
+    expect(halfStore.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "mmio-violation" });
+
+    const undefinedValue = runSimulation(
+      createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 42 } }),
+    );
+    expect(undefinedValue.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "mmio-violation" });
+
+    const highBitsWithSuccessPattern = runSimulation(
+      createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 0x00015555 } }),
+    );
+    expect(highBitsWithSuccessPattern.current.terminalRecord).toMatchObject({
+      kind: "error",
+      errorKind: "mmio-violation",
+    });
   });
 
   it("suppresses device side effects when a device access errors", () => {
@@ -712,7 +774,7 @@ addi x3, x2, 1
     const simulation = runSimulation(createSimulation(assembled("addi x1, x0, 1\nfence\nebreak\naddi x2, x1, 1\n")));
     const ebreakSlot = simulation.history
       .flatMap((snapshot) => Object.values(snapshot.stages))
-      .find((slot) => slot?.instruction.op === "ebreak" && slot.isEbreak);
+      .find((slot) => slot?.instruction?.op === "ebreak" && slot.isEbreak);
 
     expect(simulation.current.halted).toBe(true);
     expect(simulation.current.registers[1]).toBe(1);
@@ -790,6 +852,82 @@ addi x1, x0, 1
     expect(
       fetchErrorFlushed.history.flatMap((snapshot) => snapshot.events).filter((event) => event.kind === "error"),
     ).toEqual([]);
+  });
+
+  it("attaches retire events to W cells and branch events to X cells in the same cycle", () => {
+    const simulation = runSimulation(
+      createSimulation(
+        assembled(`
+addi x5, x0, 3
+add x6, x5, x5
+beq x6, x6, target
+addi x7, x0, 1
+target:
+addi x8, x0, 2
+`),
+      ),
+    );
+    const expectedStages = { retire: "WB", branch: "EX", memory: "MEM", stall: "ID" } as const;
+    const checked: Record<string, number> = { retire: 0, branch: 0, stall: 0 };
+
+    for (const snapshot of simulation.history) {
+      for (const event of snapshot.events) {
+        const expected = expectedStages[event.kind as keyof typeof expectedStages];
+        if (!expected) continue;
+        const cell = snapshot.timeline.find((candidate) => candidate.seqId === event.seqId);
+        expect(cell?.stage).toBe(expected);
+        expect(cell?.cycle).toBe(event.cycle);
+        checked[event.kind] = (checked[event.kind] ?? 0) + 1;
+      }
+    }
+    expect(checked.retire).toBeGreaterThan(0);
+    expect(checked.branch).toBeGreaterThan(0);
+    expect(checked.stall).toBeGreaterThan(0);
+  });
+
+  it("has a timeline cell for every event so no event is orphaned", () => {
+    const programs = [
+      "addi x5, x0, 3\nadd x6, x5, x5\nbeq x6, x6, target\naddi x7, x0, 1\ntarget:\naddi x8, x0, 2\n",
+      "lui x1, 0x00100\nlui x2, 0x5\naddi x2, x2, 0x555\nsw x2, 0(x1)\naddi x3, x0, 1\naddi x4, x0, 2\n",
+      "ecall\naddi x1, x0, 1\n",
+    ];
+    for (const source of programs) {
+      const simulation = runSimulation(createSimulation(assembled(source)));
+      for (const snapshot of simulation.history) {
+        for (const event of snapshot.events) {
+          expect(event.cycle).toBe(snapshot.cycle);
+          const cell = snapshot.timeline.find((candidate) => candidate.seqId === event.seqId);
+          expect(cell, `event ${event.id} (${event.kind}) has no cell`).toBeDefined();
+        }
+      }
+    }
+  });
+
+  it("keeps exactly one W per retired instruction when an exit store terminates the run", () => {
+    const simulation = runSimulation(
+      createSimulation(
+        assembled(`
+lui x1, 0x00100
+lui x2, 0x5
+addi x2, x2, 0x555
+sw x2, 0(x1)
+addi x3, x0, 1
+addi x4, x0, 2
+`),
+      ),
+    );
+
+    expect(simulation.current.terminalRecord).toEqual({ kind: "exit", code: 0 });
+    const rows = formatPipelineOccupancyTable(simulation.current).split("\n");
+    const retiredRows = rows.filter((row) => row.endsWith("W"));
+    expect(retiredRows).toHaveLength(simulation.current.retireLog.length);
+    for (const row of rows) {
+      const wCount = row.split("W").length - 1;
+      expect(wCount, `row "${row}" must have at most one W`).toBeLessThanOrEqual(1);
+      if (wCount === 1) expect(row.endsWith("W"), `row "${row}" must end with its W`).toBe(true);
+    }
+    const discardedRows = rows.filter((row) => !row.endsWith("W"));
+    expect(discardedRows.length).toBeGreaterThan(0);
   });
 
   it("steps backward through history", async () => {

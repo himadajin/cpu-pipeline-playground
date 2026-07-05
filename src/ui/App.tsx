@@ -55,7 +55,7 @@ export function App() {
           <ToolbarButton label="Reset" onClick={session.actions.reset} disabled={!assembled.ok}>
             <RotateCcw size={16} />
           </ToolbarButton>
-          <ToolbarButton label="Back" onClick={session.actions.stepBack}>
+          <ToolbarButton label="Back" onClick={session.actions.stepBack} disabled={invalidated}>
             <StepBack size={16} />
           </ToolbarButton>
           <ToolbarButton
@@ -114,7 +114,7 @@ export function App() {
               selectedSnapshot={selectedSnapshot}
               selectedTimelineCell={selectedTimelineCell}
               selectedEvents={selectedEvents}
-              current={simulation.current}
+              stateSnapshot={selectedSnapshot ?? simulation.current}
             />
           </aside>
         </main>

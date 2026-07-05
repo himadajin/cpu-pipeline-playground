@@ -5,7 +5,6 @@ import {
   instructionSet,
   REAL_OPCODES,
   sourceRegisters,
-  writesRegister,
   type Instruction,
   type Opcode,
 } from "../../src/core";
@@ -96,15 +95,12 @@ describe("instruction metadata", () => {
 
     expect(sourceRegisters(add)).toEqual([2, 3]);
     expect(destinationRegister(add)).toBe(1);
-    expect(writesRegister(add)).toBe(true);
 
     expect(sourceRegisters(sw)).toEqual([4, 5]);
     expect(destinationRegister(sw)).toBeNull();
-    expect(writesRegister(sw)).toBe(false);
 
     expect(sourceRegisters(jal)).toEqual([]);
     expect(destinationRegister(jal)).toBe(6);
-    expect(writesRegister(jal)).toBe(true);
   });
 
   it("marks load and addi as single-source writeback instructions", () => {
@@ -138,15 +134,12 @@ describe("instruction metadata", () => {
 
     expect(sourceRegisters(lb)).toEqual([8]);
     expect(destinationRegister(lb)).toBe(6);
-    expect(writesRegister(lb)).toBe(true);
 
     expect(sourceRegisters(lw)).toEqual([8]);
     expect(destinationRegister(lw)).toBe(7);
-    expect(writesRegister(lw)).toBe(true);
 
     expect(sourceRegisters(addi)).toEqual([10]);
     expect(destinationRegister(addi)).toBe(9);
-    expect(writesRegister(addi)).toBe(true);
   });
 
   it("marks byte stores as memory writers without register writeback", () => {
@@ -162,7 +155,6 @@ describe("instruction metadata", () => {
 
     expect(sourceRegisters(sb)).toEqual([4, 5]);
     expect(destinationRegister(sb)).toBeNull();
-    expect(writesRegister(sb)).toBe(false);
   });
 
   it("marks jalr and upper-immediate instructions by their architectural operands", () => {
@@ -186,10 +178,8 @@ describe("instruction metadata", () => {
 
     expect(sourceRegisters(jalr)).toEqual([2]);
     expect(destinationRegister(jalr)).toBe(1);
-    expect(writesRegister(jalr)).toBe(true);
 
     expect(sourceRegisters(lui)).toEqual([]);
     expect(destinationRegister(lui)).toBe(3);
-    expect(writesRegister(lui)).toBe(true);
   });
 });

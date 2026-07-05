@@ -11,7 +11,6 @@ export {
   isRTypeOpcode,
   REAL_OPCODES,
   sourceRegisters,
-  writesRegister,
 } from "./instructionMetadata";
 export { decodeInstruction, encodeInstruction } from "./instructionCodec";
 export { toHex32, toInt32, toUint32 } from "./numbers";

@@ -19,6 +19,10 @@ export const RASK_RAM_SIZE_BYTES = 4 * 1024 * 1024;
 export const RASK_RAM_LIMIT_EXCLUSIVE = RASK_RAM_BASE + RASK_RAM_SIZE_BYTES;
 export const RASK_UART_DATA_ADDRESS = 0x10000000;
 export const RASK_EXIT_DEVICE_ADDRESS = 0x00100000;
+export const RASK_UART_REGION_BASE = 0x10000000;
+export const RASK_UART_REGION_LIMIT_EXCLUSIVE = 0x10001000;
+export const RASK_EXIT_REGION_BASE = 0x00100000;
+export const RASK_EXIT_REGION_LIMIT_EXCLUSIVE = 0x00101000;
 
 export type Opcode =
   | "add"
@@ -180,7 +184,6 @@ export interface ExecutionImageInstruction {
   word: InstructionWord;
   instruction?: Instruction;
   source: SourceLine;
-  expandedFrom?: SourceLine;
 }
 
 export interface ExecutionImage {
@@ -214,7 +217,6 @@ export interface MemoryDiff {
 
 export interface ExitRequest {
   code: number;
-  success: boolean;
 }
 
 export type DecodeErrorKind = "undef-instr" | "ecall";
@@ -248,7 +250,7 @@ export interface MemoryEffect {
 export interface RetireLogEntry {
   pc: ByteAddress;
   instructionWord: InstructionWord | null;
-  instruction: Instruction;
+  instruction?: Instruction;
   memoryEffect?: MemoryEffect;
   register?: RegisterIndex;
   registerValue?: Int32;
@@ -263,9 +265,14 @@ export interface StageSlot {
   instructionId: number;
   pc: ByteAddress;
   instructionWord: InstructionWord | null;
-  instruction: Instruction;
+  /** Decoded instruction. Absent when the slot carries only an error condition. */
+  instruction?: Instruction;
+  /** Display label: the instruction text, or a description of the error condition. */
+  text: string;
   decodeError?: DecodeError;
   error?: SimulatorError;
+  rs1Val?: Int32;
+  rs2Val?: Int32;
   result?: Int32;
   address?: ByteAddress;
   storeValue?: Int32;
@@ -280,7 +287,6 @@ export interface StageSlot {
 export type StageSlots = Record<StageName, StageSlot | null>;
 
 export interface PipelineLatches {
-  fetch: StageSlot | null;
   ifId: StageSlot | null;
   idEx: StageSlot | null;
   exMem: StageSlot | null;
@@ -300,7 +306,11 @@ export interface CycleSnapshot {
   cycle: number;
   pc: ByteAddress;
   nextSeqId: number;
+  /** End-of-cycle latch values (state handed to the next cycle). */
   latches: PipelineLatches;
+  /** End-of-cycle IF stage slot; non-null only while a stall holds the fetched instruction. */
+  ifSlot: StageSlot | null;
+  /** What each stage processed during this cycle. Not a projection of `latches`. */
   stages: StageSlots;
   registers: RegisterFile;
   memory: ByteMemory;

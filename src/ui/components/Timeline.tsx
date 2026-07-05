@@ -23,8 +23,9 @@ export function Timeline({
   selectedCell: SelectedCell | null;
   onSelect: (cell: SelectedCell) => void;
 }) {
+  // Cycle numbers are 1-origin (spec §4); cycle 0 is the pre-execution reset state and has no column.
   const maxCycle = Math.max(12, snapshots.at(-1)?.cycle ?? 0);
-  const cycles = Array.from({ length: maxCycle + 1 }, (_, index) => index);
+  const cycles = Array.from({ length: maxCycle }, (_, index) => index + 1);
   const instructionMap = new Map(instructions.map((instruction) => [instruction.id, instruction]));
   const rows = buildRows(cells, instructionMap);
   const cellMap = new Map(cells.map((cell) => [`${cell.seqId}:${cell.cycle}`, cell]));

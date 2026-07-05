@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { assemble, type ProgramDocument } from "../../core";
 import { createInitialPrograms, createProgram, duplicateProgram, loadPrograms, savePrograms } from "../programStore";
 
@@ -8,17 +8,27 @@ export function usePrograms() {
   const [programs, setPrograms] = useState<ProgramDocument[]>(() => loadPrograms());
   const [selectedProgramId, setSelectedProgramId] = useState(() => programs[0]?.id ?? "");
   const selectedProgram = programs.find((program) => program.id === selectedProgramId) ?? programs[0];
-  const statuses = useMemo(
-    () =>
-      new Map(
-        programs.map((program) => {
-          const result = assemble(program.source);
-          const errors = result.ok ? 0 : result.errors.length;
-          return [program.id, { errors }];
-        }),
-      ),
-    [programs],
-  );
+  // Memoized per source text so one keystroke reassembles only the edited program.
+  const statusCacheRef = useRef(new Map<string, ProgramStatus>());
+  const statuses = useMemo(() => {
+    const cache = statusCacheRef.current;
+    const next = new Map<string, ProgramStatus>();
+    const liveSources = new Set<string>();
+    for (const program of programs) {
+      liveSources.add(program.source);
+      let status = cache.get(program.source);
+      if (!status) {
+        const result = assemble(program.source);
+        status = { errors: result.ok ? 0 : result.errors.length };
+        cache.set(program.source, status);
+      }
+      next.set(program.id, status);
+    }
+    for (const cachedSource of cache.keys()) {
+      if (!liveSources.has(cachedSource)) cache.delete(cachedSource);
+    }
+    return next;
+  }, [programs]);
 
   useEffect(() => savePrograms(programs), [programs]);
 

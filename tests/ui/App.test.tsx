@@ -47,6 +47,9 @@ describe("App", () => {
     await userEvent.type(editor, "\naddi x11, x0, 2");
     expect(screen.getByText("simulation invalidated")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Select program: .*modified/ })).toBeInTheDocument();
+    // Editing must not allow navigating the stale simulation history (D6).
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Step" })).toBeDisabled();
   });
 
   it("keeps timeline events as markers and moves event logs to the Events tab", async () => {
@@ -67,7 +70,8 @@ describe("App", () => {
   it("shows registers in fixed order and only highlights changed registers", async () => {
     render(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
-    for (let index = 0; index < 6; index += 1) {
+    // x1 retires (W stage) at cycle 5, which is when its register diff is recorded.
+    for (let index = 0; index < 5; index += 1) {
       await userEvent.click(screen.getByRole("button", { name: "Step" }));
     }
     await userEvent.click(screen.getByRole("button", { name: "Registers" }));
@@ -96,14 +100,64 @@ describe("App", () => {
     );
     const { container } = render(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
-    for (let index = 0; index < 10; index += 1) {
+    // The sw reaches MEM at cycle 9, which is when the memory diff is recorded.
+    for (let index = 0; index < 9; index += 1) {
       await userEvent.click(screen.getByRole("button", { name: "Step" }));
     }
     await userEvent.click(screen.getByRole("button", { name: "Memory" }));
 
-    expect(container).toHaveTextContent("[2147549184] 0x000000ff");
+    expect(container).toHaveTextContent("[0x80010000] 0x000000ff");
     expect(container).toHaveTextContent("bytes 0xff 0x00 0x00 0x00");
-    expect(container).toHaveTextContent("[2147549184]: 0x00 -> 0xff");
+    expect(container).toHaveTextContent("[0x80010000]: 0x00 -> 0xff");
+  });
+
+  it("attaches retire markers to W cells and branch markers to X cells", async () => {
+    window.localStorage.setItem(
+      PROGRAM_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "hazard",
+          name: "Hazard",
+          source: "addi x5, x0, 3\nadd x6, x5, x5\nbeq x6, x6, target\naddi x7, x0, 1\ntarget:\naddi x8, x0, 2\n",
+          updatedAt: 0,
+        },
+      ]),
+    );
+    const { container } = render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    // 16 cycles run the representative hazard program to completion.
+    for (let index = 0; index < 16; index += 1) {
+      await userEvent.click(screen.getByRole("button", { name: "Step" }));
+    }
+
+    expect(container.querySelectorAll(".timeline-cell.wb .event-marker.retire").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll(".timeline-cell.ex .event-marker.branch").length).toBeGreaterThan(0);
+    // The pre-fix symptoms: orphaned retire markers and branch markers on MEM cells.
+    expect(container.querySelector(".timeline-cell.mem .event-marker.branch")).toBeNull();
+    expect(container.querySelector(".timeline-cell.wb .event-marker.memory")).toBeNull();
+  });
+
+  it("shows a paused badge when an ebreak retires", async () => {
+    window.localStorage.setItem(
+      PROGRAM_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "pause",
+          name: "Pause",
+          source: "addi x1, x0, 1\nebreak\naddi x2, x0, 2\n",
+          updatedAt: 0,
+        },
+      ]),
+    );
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    // The ebreak retires (and pauses) at cycle 6.
+    for (let index = 0; index < 5; index += 1) {
+      await userEvent.click(screen.getByRole("button", { name: "Step" }));
+    }
+    expect(screen.queryByText("paused")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Step" }));
+    expect(screen.getByText("paused")).toBeInTheDocument();
   });
 
   it("collapses dock areas and reopens them from rails", async () => {

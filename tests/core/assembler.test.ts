@@ -78,7 +78,7 @@ nop
     expect(result.executionImage.instructions[0]).toMatchObject({
       address: RASK_RESET_PC,
       word: 0x00000013,
-      expandedFrom: { line: 1, text: "nop" },
+      source: { line: 1, text: "nop" },
     });
   });
 

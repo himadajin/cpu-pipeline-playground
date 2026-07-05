@@ -455,6 +455,28 @@ export function isBTypeOpcode(op: Opcode): op is BTypeOpcode {
   return isInstructionFormat(op, "B");
 }
 
+/** The memOp control signal of spec §2.3: direction × width × sign extension. */
+export interface MemoryOperation {
+  direction: "load" | "store";
+  width: 1 | 2 | 4;
+  signed: boolean;
+}
+
+const MEMORY_OPERATIONS: Partial<Record<Opcode, MemoryOperation>> = {
+  lb: { direction: "load", width: 1, signed: true },
+  lbu: { direction: "load", width: 1, signed: false },
+  lh: { direction: "load", width: 2, signed: true },
+  lhu: { direction: "load", width: 2, signed: false },
+  lw: { direction: "load", width: 4, signed: true },
+  sb: { direction: "store", width: 1, signed: false },
+  sh: { direction: "store", width: 2, signed: false },
+  sw: { direction: "store", width: 4, signed: false },
+};
+
+export function memoryOperation(instruction: Instruction): MemoryOperation | null {
+  return MEMORY_OPERATIONS[instruction.op] ?? null;
+}
+
 export function sourceRegisters(instruction: Instruction): RegisterIndex[] {
   const metadata = INSTRUCTION_METADATA[instruction.op];
   const registers: RegisterIndex[] = [];
@@ -470,8 +492,4 @@ export function destinationRegister(instruction: Instruction | undefined): Regis
   const metadata = INSTRUCTION_METADATA[instruction.op];
   if (metadata.destination === "rd" && "rd" in instruction) return instruction.rd;
   return null;
-}
-
-export function writesRegister(instruction: Instruction | undefined): boolean {
-  return destinationRegister(instruction) != null;
 }

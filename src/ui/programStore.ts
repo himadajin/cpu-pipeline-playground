@@ -6,11 +6,24 @@ export function loadPrograms(): ProgramDocument[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return createInitialPrograms();
-    const parsed = JSON.parse(raw) as ProgramDocument[];
-    return parsed.length > 0 ? parsed : createInitialPrograms();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return createInitialPrograms();
+    const programs = parsed.filter(isProgramDocument);
+    return programs.length > 0 ? programs : createInitialPrograms();
   } catch {
     return createInitialPrograms();
   }
+}
+
+function isProgramDocument(value: unknown): value is ProgramDocument {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.source === "string" &&
+    typeof candidate.updatedAt === "number"
+  );
 }
 
 export function savePrograms(programs: ProgramDocument[]) {
