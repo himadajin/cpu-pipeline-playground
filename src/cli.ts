@@ -1,10 +1,17 @@
 import { readFileSync } from "node:fs";
-import { assemble, createSimulation, formatPipelineOccupancyTable, formatRetireLog, stepSimulation } from "./core";
+import {
+  assemble,
+  createSimulation,
+  formatPipelineOccupancyTable,
+  formatRetireLog,
+  stepSimulation,
+  toHex32,
+} from "./core";
 
 const [filePath, cycleArg] = process.argv.slice(2);
-const maxCycles = Number.parseInt(cycleArg ?? "20", 10);
+const maxCycles = cycleArg === undefined ? 20 : Number.parseInt(cycleArg, 10);
 
-if (!filePath) {
+if (!filePath || Number.isNaN(maxCycles) || maxCycles < 1) {
   console.error("Usage: npm run cli -- <program.asm> [cycles]");
   process.exit(1);
 }
@@ -26,7 +33,7 @@ for (let index = 0; index < maxCycles && !simulation.current.halted; index += 1)
   const stages = Object.entries(snapshot.stages)
     .map(([stage, slot]) => `${stage}:${slot ? slot.text : "."}`)
     .join(" | ");
-  console.log(`cycle ${snapshot.cycle} pc=${snapshot.pc} ${stages}`);
+  console.log(`cycle ${snapshot.cycle} pc=${toHex32(snapshot.pc)} ${stages}`);
   for (const event of snapshot.events) {
     console.log(`  [${event.kind}] ${event.message}`);
   }
