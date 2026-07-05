@@ -1,64 +1,86 @@
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
 
-const LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v1";
-const RIGHT_DOCK_MIN_WIDTH = 280;
-const RIGHT_DOCK_MAX_WIDTH = 560;
-const RIGHT_RAIL_WIDTH = 36;
-const BOTTOM_DRAWER_MIN_HEIGHT = 180;
-const BOTTOM_DRAWER_MAX_HEIGHT = 520;
-const BOTTOM_RAIL_HEIGHT = 34;
+const LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v2";
+const LEGACY_LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v1";
+const CODE_PANE_MIN_WIDTH = 240;
+const CODE_PANE_MAX_WIDTH = 480;
+const CODE_RAIL_WIDTH = 36;
+const STATE_STRIP_MIN_HEIGHT = 160;
+const STATE_STRIP_MAX_HEIGHT = 400;
+const STATE_RAIL_HEIGHT = 34;
 
-export type BottomTab = "assembly" | "events";
-export type RightTab = "inspector" | "registers" | "memory";
+export type StateTab = "registers" | "memory" | "events";
+export type RegisterNameStyle = "numeric" | "abi";
 
 export type WorkbenchLayout = {
-  bottomOpen: boolean;
-  bottomHeight: number;
-  bottomTab: BottomTab;
-  rightOpen: boolean;
-  rightWidth: number;
-  rightTab: RightTab;
+  codeOpen: boolean;
+  codeWidth: number;
+  stateOpen: boolean;
+  stateHeight: number;
+  stateTab: StateTab;
+  registerNames: RegisterNameStyle;
 };
 
 const DEFAULT_LAYOUT: WorkbenchLayout = {
-  bottomOpen: true,
-  bottomHeight: 300,
-  bottomTab: "assembly",
-  rightOpen: true,
-  rightWidth: 340,
-  rightTab: "inspector",
+  codeOpen: true,
+  codeWidth: 300,
+  stateOpen: true,
+  stateHeight: 240,
+  stateTab: "registers",
+  registerNames: "numeric",
 };
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function isBottomTab(value: unknown): value is BottomTab {
-  return value === "assembly" || value === "events";
+function isStateTab(value: unknown): value is StateTab {
+  return value === "registers" || value === "memory" || value === "events";
 }
 
-function isRightTab(value: unknown): value is RightTab {
-  return value === "inspector" || value === "registers" || value === "memory";
+function isRegisterNameStyle(value: unknown): value is RegisterNameStyle {
+  return value === "numeric" || value === "abi";
+}
+
+/** Carries user preferences over from the pre-Phase-3 layout schema. */
+function migrateLegacyLayout(): WorkbenchLayout {
+  try {
+    const raw = window.localStorage.getItem(LEGACY_LAYOUT_STORAGE_KEY);
+    if (!raw) return DEFAULT_LAYOUT;
+    const parsed = JSON.parse(raw) as { rightTab?: unknown; bottomTab?: unknown; registerNames?: unknown };
+    const stateTab = isStateTab(parsed.rightTab)
+      ? parsed.rightTab
+      : parsed.bottomTab === "events"
+        ? "events"
+        : DEFAULT_LAYOUT.stateTab;
+    return {
+      ...DEFAULT_LAYOUT,
+      stateTab,
+      registerNames: isRegisterNameStyle(parsed.registerNames) ? parsed.registerNames : DEFAULT_LAYOUT.registerNames,
+    };
+  } catch {
+    return DEFAULT_LAYOUT;
+  }
 }
 
 function loadWorkbenchLayout(): WorkbenchLayout {
   try {
     const raw = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
-    if (!raw) return DEFAULT_LAYOUT;
+    if (!raw) return migrateLegacyLayout();
     const parsed = JSON.parse(raw) as Partial<WorkbenchLayout>;
     return {
-      bottomOpen: typeof parsed.bottomOpen === "boolean" ? parsed.bottomOpen : DEFAULT_LAYOUT.bottomOpen,
-      bottomHeight:
-        typeof parsed.bottomHeight === "number"
-          ? clamp(parsed.bottomHeight, BOTTOM_DRAWER_MIN_HEIGHT, BOTTOM_DRAWER_MAX_HEIGHT)
-          : DEFAULT_LAYOUT.bottomHeight,
-      bottomTab: isBottomTab(parsed.bottomTab) ? parsed.bottomTab : DEFAULT_LAYOUT.bottomTab,
-      rightOpen: typeof parsed.rightOpen === "boolean" ? parsed.rightOpen : DEFAULT_LAYOUT.rightOpen,
-      rightWidth:
-        typeof parsed.rightWidth === "number"
-          ? clamp(parsed.rightWidth, RIGHT_DOCK_MIN_WIDTH, RIGHT_DOCK_MAX_WIDTH)
-          : DEFAULT_LAYOUT.rightWidth,
-      rightTab: isRightTab(parsed.rightTab) ? parsed.rightTab : DEFAULT_LAYOUT.rightTab,
+      codeOpen: typeof parsed.codeOpen === "boolean" ? parsed.codeOpen : DEFAULT_LAYOUT.codeOpen,
+      codeWidth:
+        typeof parsed.codeWidth === "number"
+          ? clamp(parsed.codeWidth, CODE_PANE_MIN_WIDTH, CODE_PANE_MAX_WIDTH)
+          : DEFAULT_LAYOUT.codeWidth,
+      stateOpen: typeof parsed.stateOpen === "boolean" ? parsed.stateOpen : DEFAULT_LAYOUT.stateOpen,
+      stateHeight:
+        typeof parsed.stateHeight === "number"
+          ? clamp(parsed.stateHeight, STATE_STRIP_MIN_HEIGHT, STATE_STRIP_MAX_HEIGHT)
+          : DEFAULT_LAYOUT.stateHeight,
+      stateTab: isStateTab(parsed.stateTab) ? parsed.stateTab : DEFAULT_LAYOUT.stateTab,
+      registerNames: isRegisterNameStyle(parsed.registerNames) ? parsed.registerNames : DEFAULT_LAYOUT.registerNames,
     };
   } catch {
     return DEFAULT_LAYOUT;
@@ -78,29 +100,29 @@ export function useWorkbenchLayout() {
     setLayout((current) => ({ ...current, ...changes }));
   }
 
-  function selectBottomTab(tab: BottomTab) {
-    updateLayout({ bottomTab: tab, bottomOpen: true });
+  function selectStateTab(tab: StateTab) {
+    updateLayout({ stateTab: tab, stateOpen: true });
   }
 
-  function selectRightTab(tab: RightTab) {
-    updateLayout({ rightTab: tab, rightOpen: true });
+  function setCodeOpen(open: boolean) {
+    updateLayout({ codeOpen: open });
   }
 
-  function setBottomOpen(open: boolean) {
-    updateLayout({ bottomOpen: open });
+  function setStateOpen(open: boolean) {
+    updateLayout({ stateOpen: open });
   }
 
-  function setRightOpen(open: boolean) {
-    updateLayout({ rightOpen: open });
+  function setRegisterNames(style: RegisterNameStyle) {
+    updateLayout({ registerNames: style });
   }
 
-  function startRightResize(event: ReactPointerEvent<HTMLButtonElement>) {
+  function startCodeResize(event: ReactPointerEvent<HTMLButtonElement>) {
     event.preventDefault();
     const startX = event.clientX;
-    const startWidth = layout.rightWidth;
+    const startWidth = layout.codeWidth;
     const handleMove = (moveEvent: PointerEvent) => {
-      const nextWidth = clamp(startWidth - (moveEvent.clientX - startX), RIGHT_DOCK_MIN_WIDTH, RIGHT_DOCK_MAX_WIDTH);
-      setLayout((current) => ({ ...current, rightOpen: true, rightWidth: nextWidth }));
+      const nextWidth = clamp(startWidth + (moveEvent.clientX - startX), CODE_PANE_MIN_WIDTH, CODE_PANE_MAX_WIDTH);
+      setLayout((current) => ({ ...current, codeOpen: true, codeWidth: nextWidth }));
     };
     const handleUp = () => {
       window.removeEventListener("pointermove", handleMove);
@@ -110,17 +132,17 @@ export function useWorkbenchLayout() {
     window.addEventListener("pointerup", handleUp);
   }
 
-  function startBottomResize(event: ReactPointerEvent<HTMLButtonElement>) {
+  function startStateResize(event: ReactPointerEvent<HTMLButtonElement>) {
     event.preventDefault();
     const startY = event.clientY;
-    const startHeight = layout.bottomHeight;
+    const startHeight = layout.stateHeight;
     const handleMove = (moveEvent: PointerEvent) => {
       const nextHeight = clamp(
         startHeight - (moveEvent.clientY - startY),
-        BOTTOM_DRAWER_MIN_HEIGHT,
-        BOTTOM_DRAWER_MAX_HEIGHT,
+        STATE_STRIP_MIN_HEIGHT,
+        STATE_STRIP_MAX_HEIGHT,
       );
-      setLayout((current) => ({ ...current, bottomOpen: true, bottomHeight: nextHeight }));
+      setLayout((current) => ({ ...current, stateOpen: true, stateHeight: nextHeight }));
     };
     const handleUp = () => {
       window.removeEventListener("pointermove", handleMove);
@@ -132,17 +154,17 @@ export function useWorkbenchLayout() {
 
   return {
     dimensions: {
-      bottomRailHeight: BOTTOM_RAIL_HEIGHT,
-      rightRailWidth: RIGHT_RAIL_WIDTH,
+      codeRailWidth: CODE_RAIL_WIDTH,
+      stateRailHeight: STATE_RAIL_HEIGHT,
     },
     layout,
     actions: {
-      selectBottomTab,
-      selectRightTab,
-      setBottomOpen,
-      setRightOpen,
-      startBottomResize,
-      startRightResize,
+      selectStateTab,
+      setCodeOpen,
+      setRegisterNames,
+      setStateOpen,
+      startCodeResize,
+      startStateResize,
     },
   };
 }

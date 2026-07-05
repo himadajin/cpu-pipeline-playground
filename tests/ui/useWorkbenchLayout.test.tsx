@@ -3,7 +3,8 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useWorkbenchLayout } from "../../src/ui/hooks/useWorkbenchLayout";
 
-const LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v1";
+const LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v2";
+const LEGACY_LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v1";
 
 function pointerEvent(type: string, coords: { clientX?: number; clientY?: number }) {
   const event = new Event(type, { bubbles: true, cancelable: true });
@@ -28,16 +29,16 @@ describe("useWorkbenchLayout", () => {
     const { result } = renderHook(() => useWorkbenchLayout());
 
     expect(result.current.layout).toEqual({
-      bottomOpen: true,
-      bottomHeight: 300,
-      bottomTab: "assembly",
-      rightOpen: true,
-      rightWidth: 340,
-      rightTab: "inspector",
+      codeOpen: true,
+      codeWidth: 300,
+      stateOpen: true,
+      stateHeight: 240,
+      stateTab: "registers",
+      registerNames: "numeric",
     });
     expect(result.current.dimensions).toEqual({
-      bottomRailHeight: 34,
-      rightRailWidth: 36,
+      codeRailWidth: 36,
+      stateRailHeight: 34,
     });
   });
 
@@ -45,72 +46,105 @@ describe("useWorkbenchLayout", () => {
     window.localStorage.setItem(
       LAYOUT_STORAGE_KEY,
       JSON.stringify({
-        bottomOpen: false,
-        bottomHeight: 999,
-        bottomTab: "events",
-        rightOpen: false,
-        rightWidth: 12,
-        rightTab: "registers",
+        codeOpen: false,
+        codeWidth: 12,
+        stateOpen: false,
+        stateHeight: 999,
+        stateTab: "events",
+        registerNames: "abi",
       }),
     );
 
     const { result } = renderHook(() => useWorkbenchLayout());
 
     expect(result.current.layout).toEqual({
-      bottomOpen: false,
-      bottomHeight: 520,
-      bottomTab: "events",
-      rightOpen: false,
-      rightWidth: 280,
-      rightTab: "registers",
+      codeOpen: false,
+      codeWidth: 240,
+      stateOpen: false,
+      stateHeight: 400,
+      stateTab: "events",
+      registerNames: "abi",
     });
   });
 
-  it("opens the matching dock area when selecting a tab", () => {
+  it("migrates tab and register name preferences from the v1 layout", () => {
+    window.localStorage.setItem(
+      LEGACY_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        bottomOpen: false,
+        bottomHeight: 260,
+        bottomTab: "assembly",
+        rightOpen: true,
+        rightWidth: 420,
+        rightTab: "memory",
+        registerNames: "abi",
+      }),
+    );
+
     const { result } = renderHook(() => useWorkbenchLayout());
 
-    act(() => {
-      result.current.actions.setBottomOpen(false);
-      result.current.actions.setRightOpen(false);
-    });
-    act(() => {
-      result.current.actions.selectBottomTab("events");
-      result.current.actions.selectRightTab("memory");
-    });
-
-    expect(result.current.layout.bottomOpen).toBe(true);
-    expect(result.current.layout.bottomTab).toBe("events");
-    expect(result.current.layout.rightOpen).toBe(true);
-    expect(result.current.layout.rightTab).toBe("memory");
+    expect(result.current.layout.stateTab).toBe("memory");
+    expect(result.current.layout.registerNames).toBe("abi");
+    // Pane geometry does not carry over; the new panes use their defaults.
+    expect(result.current.layout.codeOpen).toBe(true);
+    expect(result.current.layout.codeWidth).toBe(300);
   });
 
-  it("resizes the right dock and persists the new width", async () => {
+  it("opens the state strip when selecting a tab", () => {
     const { result } = renderHook(() => useWorkbenchLayout());
 
-    act(() => result.current.actions.startRightResize(resizeStart({ clientX: 800 })));
     act(() => {
-      window.dispatchEvent(pointerEvent("pointermove", { clientX: 700 }));
+      result.current.actions.setStateOpen(false);
+      result.current.actions.setCodeOpen(false);
+    });
+    act(() => {
+      result.current.actions.selectStateTab("events");
+    });
+
+    expect(result.current.layout.stateOpen).toBe(true);
+    expect(result.current.layout.stateTab).toBe("events");
+    expect(result.current.layout.codeOpen).toBe(false);
+  });
+
+  it("resizes the code pane and persists the new width", async () => {
+    const { result } = renderHook(() => useWorkbenchLayout());
+
+    act(() => result.current.actions.startCodeResize(resizeStart({ clientX: 300 })));
+    act(() => {
+      window.dispatchEvent(pointerEvent("pointermove", { clientX: 380 }));
       window.dispatchEvent(pointerEvent("pointerup", {}));
     });
 
-    expect(result.current.layout.rightOpen).toBe(true);
-    expect(result.current.layout.rightWidth).toBe(440);
+    expect(result.current.layout.codeOpen).toBe(true);
+    expect(result.current.layout.codeWidth).toBe(380);
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem(LAYOUT_STORAGE_KEY) ?? "{}");
-      expect(stored.rightWidth).toBe(440);
+      expect(stored.codeWidth).toBe(380);
     });
   });
 
-  it("resizes the bottom drawer and clamps its height", () => {
+  it("resizes the state strip and clamps its height", () => {
     const { result } = renderHook(() => useWorkbenchLayout());
 
-    act(() => result.current.actions.startBottomResize(resizeStart({ clientY: 500 })));
+    act(() => result.current.actions.startStateResize(resizeStart({ clientY: 500 })));
     act(() => {
       window.dispatchEvent(pointerEvent("pointermove", { clientY: -500 }));
       window.dispatchEvent(pointerEvent("pointerup", {}));
     });
 
-    expect(result.current.layout.bottomOpen).toBe(true);
-    expect(result.current.layout.bottomHeight).toBe(520);
+    expect(result.current.layout.stateOpen).toBe(true);
+    expect(result.current.layout.stateHeight).toBe(400);
+  });
+
+  it("persists the register name style", async () => {
+    const { result } = renderHook(() => useWorkbenchLayout());
+
+    act(() => result.current.actions.setRegisterNames("abi"));
+
+    expect(result.current.layout.registerNames).toBe("abi");
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(LAYOUT_STORAGE_KEY) ?? "{}");
+      expect(stored.registerNames).toBe("abi");
+    });
   });
 });

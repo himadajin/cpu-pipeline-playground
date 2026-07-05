@@ -1,9 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/ui/App";
 
-const LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v1";
+const LAYOUT_STORAGE_KEY = "cpu-pipeline-playground.layout.v2";
 const PROGRAM_STORAGE_KEY = "cpu-pipeline-playground.programs.v1";
 
 function pointerEvent(type: string, coords: { clientX?: number; clientY?: number }) {
@@ -20,23 +20,48 @@ describe("App", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("renders the workbench and steps a program", async () => {
     render(<App />);
     expect(screen.getByText("CPU Pipeline Playground")).toBeInTheDocument();
     expect(screen.getByRole("grid", { name: "Pipeline timeline" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Assembly" })).toHaveClass("active");
-    expect(screen.getByRole("button", { name: "Inspector" })).toHaveClass("active");
-    expect(screen.getByRole("button", { name: "Events" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Registers" })).toBeInTheDocument();
+    // Code column on the left, state strip tabs under the trace.
+    expect(screen.getByText("Code")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Assembly source")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Registers" })).toHaveClass("active");
     expect(screen.getByRole("button", { name: "Memory" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Events" })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
     await userEvent.click(screen.getByRole("button", { name: "Step" }));
 
     expect(screen.getByText("cycle 1")).toBeInTheDocument();
-    expect(screen.getByText("Inspector")).toBeInTheDocument();
+  });
+
+  it("opens cell details in a popover and closes it with Escape", async () => {
+    const { container } = render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    for (let index = 0; index < 5; index += 1) {
+      await userEvent.click(screen.getByRole("button", { name: "Step" }));
+    }
+
+    const wbCell = container.querySelector<HTMLButtonElement>(".timeline-cell.wb:not(:disabled)");
+    expect(wbCell).not.toBeNull();
+    await userEvent.click(wbCell!);
+
+    const popover = screen.getByRole("dialog", { name: "Cell details" });
+    expect(popover).toHaveTextContent(/S\d+, WB, cycle \d+, line \d+/);
+    expect(popover).toHaveTextContent(/retire/);
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Cell details" })).not.toBeInTheDocument();
+
+    await userEvent.click(wbCell!);
+    expect(screen.getByRole("dialog", { name: "Cell details" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close cell details" }));
+    expect(screen.queryByRole("dialog", { name: "Cell details" })).not.toBeInTheDocument();
   });
 
   it("invalidates the simulation after editing", async () => {
@@ -160,68 +185,68 @@ describe("App", () => {
     expect(screen.getByText("paused")).toBeInTheDocument();
   });
 
-  it("collapses dock areas and reopens them from rails", async () => {
+  it("collapses panes and reopens them from rails", async () => {
     render(<App />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Close right dock" }));
-    expect(screen.getByLabelText("Right dock rail")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Open Registers" }));
-    expect(screen.getByRole("button", { name: "Registers" })).toHaveClass("active");
+    await userEvent.click(screen.getByRole("button", { name: "Close code pane" }));
+    expect(screen.getByLabelText("Code rail")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open Code" }));
+    expect(screen.getByText("Code")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Assembly source")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Close bottom drawer" }));
-    expect(screen.getByLabelText("Bottom drawer rail")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close state strip" }));
+    expect(screen.getByLabelText("State strip rail")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Open Events" }));
     expect(screen.getByRole("button", { name: "Events" })).toHaveClass("active");
   });
 
-  it("restores saved dock layout state", async () => {
+  it("restores saved workbench layout state", async () => {
     window.localStorage.setItem(
       LAYOUT_STORAGE_KEY,
       JSON.stringify({
-        bottomOpen: false,
-        bottomHeight: 260,
-        bottomTab: "events",
-        rightOpen: false,
-        rightWidth: 420,
-        rightTab: "registers",
+        codeOpen: false,
+        codeWidth: 420,
+        stateOpen: false,
+        stateHeight: 260,
+        stateTab: "registers",
+        registerNames: "numeric",
       }),
     );
     const { container } = render(<App />);
 
-    expect(screen.getByLabelText("Right dock rail")).toBeInTheDocument();
-    expect(screen.getByLabelText("Bottom drawer rail")).toBeInTheDocument();
+    expect(screen.getByLabelText("Code rail")).toBeInTheDocument();
+    expect(screen.getByLabelText("State strip rail")).toBeInTheDocument();
     expect(container.querySelector<HTMLElement>(".workbench")?.style.gridTemplateColumns).toContain("36px");
-    expect(container.querySelector<HTMLElement>(".center-pane")?.style.gridTemplateRows).toContain("34px");
+    expect(container.querySelector<HTMLElement>(".observe-pane")?.style.gridTemplateRows).toContain("34px");
 
     await userEvent.click(screen.getByRole("button", { name: "Open Registers" }));
-    await userEvent.click(screen.getByRole("button", { name: "Open Events" }));
+    await userEvent.click(screen.getByRole("button", { name: "Open Code" }));
 
     expect(screen.getByRole("button", { name: "Registers" })).toHaveClass("active");
-    expect(screen.getByRole("button", { name: "Events" })).toHaveClass("active");
     expect(container.querySelector<HTMLElement>(".workbench")?.style.gridTemplateColumns).toContain("420px");
-    expect(container.querySelector<HTMLElement>(".center-pane")?.style.gridTemplateRows).toContain("260px");
+    expect(container.querySelector<HTMLElement>(".observe-pane")?.style.gridTemplateRows).toContain("260px");
   });
 
-  it("resizes dock areas and persists the new sizes", async () => {
+  it("resizes panes and persists the new sizes", async () => {
     const { container } = render(<App />);
 
-    fireEvent(screen.getByRole("button", { name: "Resize right dock" }), pointerEvent("pointerdown", { clientX: 800 }));
-    fireEvent(window, pointerEvent("pointermove", { clientX: 700 }));
+    fireEvent(screen.getByRole("button", { name: "Resize code pane" }), pointerEvent("pointerdown", { clientX: 300 }));
+    fireEvent(window, pointerEvent("pointermove", { clientX: 380 }));
     fireEvent(window, pointerEvent("pointerup", {}));
-    expect(container.querySelector<HTMLElement>(".workbench")?.style.gridTemplateColumns).toContain("440px");
+    expect(container.querySelector<HTMLElement>(".workbench")?.style.gridTemplateColumns).toContain("380px");
 
     fireEvent(
-      screen.getByRole("button", { name: "Resize bottom drawer" }),
+      screen.getByRole("button", { name: "Resize state strip" }),
       pointerEvent("pointerdown", { clientY: 500 }),
     );
     fireEvent(window, pointerEvent("pointermove", { clientY: 430 }));
     fireEvent(window, pointerEvent("pointerup", {}));
-    expect(container.querySelector<HTMLElement>(".center-pane")?.style.gridTemplateRows).toContain("370px");
+    expect(container.querySelector<HTMLElement>(".observe-pane")?.style.gridTemplateRows).toContain("310px");
 
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem(LAYOUT_STORAGE_KEY) ?? "{}");
-      expect(stored.rightWidth).toBe(440);
-      expect(stored.bottomHeight).toBe(370);
+      expect(stored.codeWidth).toBe(380);
+      expect(stored.stateHeight).toBe(310);
     });
   });
 
@@ -308,6 +333,66 @@ describe("App", () => {
         "Two-word memory sum",
       ]);
     });
+  });
+
+  it("deletes a program and restores it from the undo toast", async () => {
+    window.localStorage.setItem(
+      PROGRAM_STORAGE_KEY,
+      JSON.stringify([
+        { id: "first", name: "First program", source: "addi x1, x0, 1\n", updatedAt: 0 },
+        { id: "second", name: "Second program", source: "addi x2, x0, 2\n", updatedAt: 0 },
+      ]),
+    );
+    render(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Select program: First program/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete First program" }));
+
+    expect(screen.getByRole("button", { name: /Select program: Second program/ })).toBeInTheDocument();
+    const toast = screen.getByRole("status");
+    expect(toast).toHaveTextContent('Deleted "First program"');
+
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Select program: First program/ })).toBeInTheDocument();
+  });
+
+  it("dismisses the undo toast automatically", () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem(
+      PROGRAM_STORAGE_KEY,
+      JSON.stringify([
+        { id: "first", name: "First program", source: "addi x1, x0, 1\n", updatedAt: 0 },
+        { id: "second", name: "Second program", source: "addi x2, x0, 2\n", updatedAt: 0 },
+      ]),
+    );
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Select program: First program/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete First program" }));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(6100);
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("closes the program menu with Escape but keeps it open when canceling a rename", async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Select program:/ }));
+    expect(screen.getByRole("menu", { name: "Programs" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("menu", { name: "Programs" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Select program:/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Rename Sum four numbers/ }));
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByLabelText("Program name")).not.toBeInTheDocument();
+    expect(screen.getByRole("menu", { name: "Programs" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("menu", { name: "Programs" })).not.toBeInTheDocument();
   });
 
   it("disables delete when only one program exists", async () => {

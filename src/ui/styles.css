@@ -1,36 +1,49 @@
 @import "tailwindcss";
-@import "@radix-ui/colors/gray.css";
-@import "@radix-ui/colors/indigo.css";
 
+/*
+ * Design language: an instrument, not a dashboard.
+ * - Chrome (frames, buttons, tabs, rules) is achromatic.
+ * - Every hue on screen is a CPU meaning: one fixed color per pipeline
+ *   stage, plus a dedicated red for errors. There is no decorative accent.
+ * - IBM Plex Mono carries mnemonics, numbers, and UI labels; IBM Plex Sans
+ *   is reserved for explanatory prose.
+ */
 :root {
-  --app-bg: var(--gray-2);
-  --panel: var(--gray-1);
-  --panel-subtle: var(--gray-2);
-  --surface: var(--gray-3);
-  --surface-hover: var(--gray-4);
-  --surface-active: var(--gray-5);
-  --border-subtle: var(--gray-5);
-  --border: var(--gray-6);
-  --border-strong: var(--gray-8);
-  --text: var(--gray-12);
-  --text-muted: var(--gray-11);
-  --text-soft: var(--gray-10);
-  --accent-bg: var(--indigo-3);
-  --accent-surface: var(--indigo-4);
-  --accent-border: var(--indigo-7);
-  --accent: var(--indigo-9);
-  --accent-strong: var(--indigo-11);
-  --accent-text: var(--indigo-12);
-  color: var(--text);
-  background: var(--app-bg);
-  font-family:
-    Inter,
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  /* Achromatic bench */
+  --paper: #fafaf7;
+  --panel: #ffffff;
+  --ink: #22252a;
+  --muted: #6d7378;
+  --soft: #9aa0a6;
+  --line: #e4e5df;
+  --line-strong: #c4c6bd;
+  --hover: #f2f3ee;
+  --active: #e9eae3;
+
+  /* Semantic color: pipeline stages (colorblind-safe, cold-to-warm order) */
+  --st-if: #0072b2;
+  --st-id: #00795c;
+  --st-ex: #e69f00;
+  --st-mem: #d55e00;
+  --st-wb: #6c4fa6;
+  --st-if-tint: #e3eef6;
+  --st-id-tint: #dff0ea;
+  --st-ex-tint: #faeed3;
+  --st-mem-tint: #f9e6d9;
+  --st-wb-tint: #ece6f5;
+
+  /* Semantic color: errors only */
+  --error: #b3261e;
+  --error-tint: #f9e9e8;
+
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  color: var(--ink);
+  background: var(--paper);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 * {
@@ -46,29 +59,54 @@ body {
 button,
 input {
   font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
 }
 
 .app-shell {
   height: 100vh;
   display: grid;
   grid-template-rows: 44px 1fr;
-  background: var(--app-bg);
+  background: var(--paper);
 }
+
+/* ---------------------------------------------------------------- toolbar */
 
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
   background: var(--panel);
   min-width: 0;
 }
 
 .brand {
-  font-weight: 700;
-  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   white-space: nowrap;
+}
+
+/* A tiny silicon die: the one ornament, and it is the subject itself. */
+.brand::before {
+  content: "";
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border: 1.5px solid var(--ink);
+  border-radius: 2px;
+  padding: 3px 2px;
+  background: repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 3px);
+  background-clip: content-box;
 }
 
 .program-switcher {
@@ -78,21 +116,22 @@ input {
 
 .program-trigger {
   width: 300px;
-  height: 30px;
+  height: 29px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
   padding: 0 8px 0 10px;
   background: var(--panel);
-  color: var(--text);
+  color: var(--ink);
   text-align: left;
 }
 
 .program-trigger:hover {
-  background: var(--surface-hover);
+  background: var(--hover);
+  border-color: var(--line-strong);
 }
 
 .program-trigger-copy {
@@ -108,29 +147,29 @@ input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 .program-trigger-status {
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
 }
 
 .program-menu {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 8px);
   left: 0;
   z-index: 30;
   width: 320px;
   max-height: min(520px, calc(100vh - 58px));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--panel);
-  box-shadow: 0 18px 40px rgb(0 0 0 / 14%);
+  box-shadow: 0 12px 32px rgb(34 37 42 / 14%);
   overflow: hidden;
 }
 
@@ -139,7 +178,7 @@ input {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   padding: 6px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
 
 .program-menu-action {
@@ -147,21 +186,22 @@ input {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
   padding: 0 9px;
   background: var(--panel);
-  color: var(--text);
+  color: var(--ink);
   font-size: 12px;
 }
 
 .program-menu-action:hover {
-  background: var(--surface-hover);
+  background: var(--hover);
+  border-color: var(--line-strong);
 }
 
 .program-menu-footer {
   padding: 5px 6px 6px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
 }
 
 .program-restore-action {
@@ -173,14 +213,14 @@ input {
   border-radius: 3px;
   padding: 0 7px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 12px;
   text-align: left;
 }
 
 .program-restore-action:hover {
-  background: var(--surface-hover);
-  color: #b42318;
+  background: var(--error-tint);
+  color: var(--error);
 }
 
 .program-menu-list {
@@ -201,12 +241,12 @@ input {
 }
 
 .program-menu-row:hover {
-  background: var(--surface);
+  background: var(--hover);
 }
 
 .program-menu-row.selected {
-  border-left-color: var(--accent);
-  background: var(--accent-bg);
+  border-left-color: var(--ink);
+  background: var(--active);
 }
 
 .program-menu-select {
@@ -218,7 +258,7 @@ input {
   gap: 8px;
   border: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--ink);
   text-align: left;
 }
 
@@ -227,18 +267,14 @@ input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
 }
 
 .program-row-meta {
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
-}
-
-.program-menu-row.selected .program-row-meta {
-  color: var(--accent-text);
 }
 
 .program-row-actions {
@@ -262,121 +298,216 @@ input {
   min-width: 0;
   width: 100%;
   height: 30px;
-  border: 1px solid var(--accent-border);
-  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
   padding: 0 7px;
   background: var(--panel);
-  color: var(--text);
-  font-size: 13px;
+  color: var(--ink);
+  font-size: 12.5px;
 }
 
+/* ------------------------------------------------------------ status chips */
+
 .mini-status {
-  height: 24px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0 8px;
-  color: var(--text-muted);
-  background: var(--surface);
-  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 7px;
+  color: var(--muted);
+  background: var(--panel);
+  font-size: 11px;
   white-space: nowrap;
 }
 
-.mini-status {
-  border-color: var(--border);
-  color: var(--text-muted);
-}
-
 .mini-status.bad {
-  border-color: var(--border-strong);
-  color: var(--text);
-  font-weight: 700;
+  border-color: var(--error);
+  color: var(--error);
 }
 
 .mini-status.warn {
-  border-color: var(--accent-border);
-  color: var(--accent-text);
-  background: var(--accent-bg);
+  border-style: dashed;
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+/* "-> cycle N" returns the cursor to the newest cycle; it must read as a control. */
+button.mini-status.jump-latest {
+  cursor: pointer;
+  color: var(--ink);
+  border-color: var(--line-strong);
+  font-weight: 600;
+}
+
+button.mini-status.jump-latest:hover {
+  background: var(--hover);
+}
+
+.name-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.name-toggle-option {
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.name-toggle-option:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.name-toggle-option.active {
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
 }
 
 .toolbar-spacer {
   flex: 1;
 }
 
+/* --------------------------------------------------------------- buttons */
+
 .icon-button {
+  width: 30px;
   height: 28px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   background: var(--panel);
-  color: var(--text);
-  border-radius: 4px;
+  color: var(--ink);
+  border-radius: 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.icon-button {
-  width: 30px;
-}
-
 .icon-button:hover:not(:disabled) {
-  background: var(--surface-hover);
+  background: var(--hover);
+  border-color: var(--line-strong);
 }
 
 .icon-button:disabled {
-  color: var(--text-soft);
+  color: var(--soft);
   cursor: not-allowed;
 }
+
+.panel-close-button {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.panel-close-button:hover {
+  border-color: var(--line);
+  background: var(--hover);
+  color: var(--ink);
+}
+
+/* -------------------------------------------------------------- workbench */
 
 .workbench {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 340px);
-}
-
-.right-pane,
-.center-pane {
-  position: relative;
-  min-height: 0;
-  min-width: 0;
-  border-right: 1px solid var(--border);
-  background: var(--panel);
-}
-
-.right-pane {
-  border-right: none;
-  border-left: 1px solid var(--border);
-  overflow: hidden;
-}
-
-.right-pane.collapsed {
-  border-left: 1px solid var(--border);
-}
-
-.center-pane {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) minmax(220px, 30vh);
-  background: var(--app-bg);
+  grid-template-columns: 300px minmax(0, 1fr);
 }
 
 .pipeline-panel,
-.bottom-drawer,
-.right-dock,
-.inspector-panel,
+.state-strip,
 .state-panel {
   min-height: 0;
 }
 
-.pane-header {
-  height: 28px;
+/* Code column: source is portrait media, so it gets the full height. */
+.code-pane {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 30px minmax(0, 1fr);
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.code-rail {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 3px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.code-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pane-cap {
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: var(--text);
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.pane-title {
   font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0;
+  font-weight: 600;
+}
+
+.observe-pane {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 240px;
+  background: var(--paper);
+}
+
+/* State strip: every tab shows the machine at the cursor cycle. */
+.state-strip {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 34px minmax(0, 1fr);
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.state-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 12px 12px;
+}
+
+.state-rail {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 10px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
 }
 
 .header-status {
@@ -387,8 +518,8 @@ input {
 
 .pipeline-panel {
   display: grid;
-  grid-template-rows: 34px 88px minmax(0, 1fr);
-  background: var(--app-bg);
+  grid-template-rows: 34px minmax(0, 1fr);
+  background: var(--paper);
 }
 
 .pipeline-header {
@@ -398,13 +529,11 @@ input {
   justify-content: space-between;
   gap: 10px;
   padding: 0 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
   background: var(--panel);
-  color: var(--text);
+  color: var(--ink);
   font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0;
+  font-weight: 600;
 }
 
 .pipeline-status {
@@ -416,14 +545,6 @@ input {
   overflow: hidden;
 }
 
-.bottom-drawer {
-  position: relative;
-  display: grid;
-  grid-template-rows: 34px minmax(0, 1fr);
-  border-top: 1px solid var(--border);
-  background: var(--panel);
-}
-
 .tab-bar {
   min-width: 0;
   height: 34px;
@@ -432,7 +553,7 @@ input {
   justify-content: space-between;
   gap: 8px;
   padding: 0 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
   background: var(--panel);
 }
 
@@ -450,38 +571,20 @@ input {
   border-radius: 0;
   padding: 0 9px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-weight: 500;
 }
 
 .tab-button:hover {
-  color: var(--text);
-  background: var(--surface);
+  color: var(--ink);
+  background: var(--hover);
 }
 
 .tab-button.active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
-
-.panel-close-button {
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-}
-
-.panel-close-button:hover {
-  border-color: var(--border);
-  background: var(--surface);
-  color: var(--text);
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--ink);
 }
 
 .resize-handle {
@@ -493,19 +596,19 @@ input {
 
 .resize-handle:hover,
 .resize-handle:focus-visible {
-  background: var(--accent-bg);
+  background: var(--active);
   outline: none;
 }
 
-.right-resizer {
+.code-resizer {
   top: 0;
   bottom: 0;
-  left: -4px;
+  right: -4px;
   width: 7px;
   cursor: col-resize;
 }
 
-.bottom-resizer {
+.state-resizer {
   top: -4px;
   left: 0;
   right: 0;
@@ -513,58 +616,13 @@ input {
   cursor: row-resize;
 }
 
-.drawer-body,
-.dock-body {
-  min-height: 0;
-  overflow: auto;
-}
-
-.drawer-body {
-  background: var(--panel);
-}
-
 .editor-loading {
   height: 100%;
   display: flex;
   align-items: center;
   padding: 0 12px;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.dock-body {
-  padding: 10px;
-}
-
-.right-dock {
-  position: relative;
-  min-height: 0;
-  height: 100%;
-  display: grid;
-  grid-template-rows: 34px minmax(0, 1fr);
-  background: var(--panel);
-}
-
-.bottom-rail {
-  min-height: 0;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 10px;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
-}
-
-.right-rail {
-  min-height: 0;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-  padding: 6px 3px;
-  background: var(--panel);
+  color: var(--muted);
+  font-size: 12.5px;
 }
 
 .rail-tab {
@@ -575,21 +633,21 @@ input {
   border-radius: 3px;
   padding: 0 8px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-weight: 500;
 }
 
 .rail-tab:hover {
-  color: var(--text);
-  background: var(--surface);
+  color: var(--ink);
+  background: var(--hover);
 }
 
 .rail-tab.active {
-  color: var(--text);
-  border-left-color: var(--accent);
-  background: var(--accent-bg);
+  color: var(--ink);
+  font-weight: 600;
+  border-left-color: var(--ink);
+  background: var(--active);
 }
 
 .rail-tab.vertical {
@@ -604,43 +662,7 @@ input {
   height: 100%;
 }
 
-.stage-board {
-  padding: 7px 10px;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.stage-tile {
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--panel);
-  padding: 6px 8px;
-}
-
-.stage-name {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent-strong);
-}
-
-.stage-inst {
-  margin-top: 5px;
-  min-height: 28px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--text);
-  font:
-    12px/1.35 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    monospace;
-}
+/* --------------------------------------------------------------- timeline */
 
 .timeline-shell {
   min-height: 0;
@@ -648,6 +670,7 @@ input {
 }
 
 .timeline {
+  position: relative;
   min-width: max-content;
   padding: 10px;
 }
@@ -663,8 +686,8 @@ input {
 .instruction-cell,
 .timeline-cell {
   height: 40px;
-  border-right: 1px solid var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
 .instruction-header,
@@ -673,7 +696,7 @@ input {
   top: 0;
   z-index: 2;
   background: var(--panel);
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 11px;
   display: flex;
   align-items: center;
@@ -687,10 +710,29 @@ input {
   padding-left: 8px;
 }
 
+/* The cycle ruler doubles as the cursor scrubber. */
+.header-row {
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.header-row .instruction-header {
+  cursor: default;
+}
+
+/* The cursor flag: the one place the chrome goes solid ink. */
 .cycle-header.current {
-  color: var(--accent-text);
-  background: var(--accent-bg);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  color: var(--paper);
+  font-weight: 600;
+  background: var(--ink);
+}
+
+.timeline-empty {
+  margin: 0;
+  padding: 14px 4px;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 12.5px;
 }
 
 .instruction-cell {
@@ -702,38 +744,32 @@ input {
   align-items: center;
   gap: 6px;
   padding: 0 8px;
-  color: var(--text);
-  font:
-    12px ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    monospace;
+  color: var(--ink);
+  font: 12px var(--mono);
   overflow: hidden;
   white-space: nowrap;
 }
 
 .seq-number {
-  color: var(--accent-strong);
-  font-weight: 700;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .line-number {
-  color: var(--text-soft);
+  color: var(--soft);
 }
 
 .instruction-op {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text);
-  font-weight: 700;
+  color: var(--ink);
+  font-weight: 600;
 }
 
 .timeline-cell {
   background: var(--panel);
-  color: var(--text-muted);
+  color: var(--muted);
   border-top: 0;
   border-left: 0;
   padding: 3px;
@@ -742,45 +778,96 @@ input {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font:
-    11px ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    monospace;
+  font: 600 11px var(--mono);
 }
 
+/* Stage identity is the color system: one fixed hue per stage. */
 .timeline-cell.if {
-  background: var(--gray-2);
+  background: var(--st-if);
+  color: #fff;
 }
 
 .timeline-cell.id {
-  background: var(--gray-2);
+  background: var(--st-id);
+  color: #fff;
 }
 
 .timeline-cell.ex {
-  background: var(--gray-2);
+  background: var(--st-ex);
+  color: var(--ink);
 }
 
 .timeline-cell.mem {
-  background: var(--gray-2);
+  background: var(--st-mem);
+  color: #fff;
 }
 
 .timeline-cell.wb {
-  background: var(--gray-2);
+  background: var(--st-wb);
+  color: #fff;
 }
 
+/* Held cells: the same stage repeated (a stall or fetch freeze) reads as a
+ * hatched continuation of the stage color instead of a fresh solid latch. */
+.timeline-cell.held.if {
+  background: repeating-linear-gradient(315deg, var(--st-if-tint) 0 5px, var(--panel) 5px 10px);
+  color: var(--st-if);
+}
+
+.timeline-cell.held.id {
+  background: repeating-linear-gradient(315deg, var(--st-id-tint) 0 5px, var(--panel) 5px 10px);
+  color: var(--st-id);
+}
+
+.timeline-cell.held.ex {
+  background: repeating-linear-gradient(315deg, var(--st-ex-tint) 0 5px, var(--panel) 5px 10px);
+  color: var(--st-ex);
+}
+
+.timeline-cell.held.mem {
+  background: repeating-linear-gradient(315deg, var(--st-mem-tint) 0 5px, var(--panel) 5px 10px);
+  color: var(--st-mem);
+}
+
+.timeline-cell.held.wb {
+  background: repeating-linear-gradient(315deg, var(--st-wb-tint) 0 5px, var(--panel) 5px 10px);
+  color: var(--st-wb);
+}
+
+/* Cells ahead of the cursor are already-computed future: visible but dimmed. */
+.timeline-cell.ahead {
+  opacity: 0.3;
+}
+
+/* Cursor column rails, drawn on every cell in the column. */
 .timeline-cell.current-cycle {
-  box-shadow: inset 2px 0 0 var(--accent-border);
+  box-shadow:
+    inset 1.5px 0 0 var(--ink),
+    inset -1.5px 0 0 var(--ink);
 }
 
 .timeline-cell.selected {
-  color: var(--accent-text);
-  background: var(--accent-bg);
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ink);
   outline-offset: -2px;
 }
+
+/* Newly computed cells latch in once when the simulation extends; the class
+ * follows the newest cycle, so scrubbing the cursor never re-triggers it. */
+@media (prefers-reduced-motion: no-preference) {
+  .timeline-cell.latched:not(:disabled) {
+    animation: cell-latch 0.16s ease-out;
+  }
+
+  @keyframes cell-latch {
+    from {
+      transform: scaleX(0.6);
+      transform-origin: left center;
+      opacity: 0.4;
+    }
+  }
+}
+
+/* ---------------------------------------------------------- event markers */
 
 .event-markers {
   height: 8px;
@@ -790,18 +877,18 @@ input {
   gap: 3px;
 }
 
+/* Markers draw with currentColor so they stay legible on any stage fill. */
 .event-marker {
   width: 7px;
   height: 7px;
   display: inline-block;
-  border: 1px solid var(--border-strong);
+  border: 1px solid currentColor;
   border-radius: 50%;
-  background: var(--panel);
+  background: transparent;
 }
 
 .event-marker.retire {
-  border-color: var(--accent);
-  background: var(--accent);
+  background: currentColor;
 }
 
 .event-marker.stall {
@@ -814,36 +901,69 @@ input {
 }
 
 .event-marker.memory {
-  background: var(--surface-active);
+  background: linear-gradient(180deg, currentColor 50%, transparent 50%);
 }
 
 .event-marker.branch {
-  border-color: var(--text-muted);
-  background: linear-gradient(90deg, var(--panel) 45%, var(--text-muted) 45%, var(--text-muted) 55%, var(--panel) 55%);
+  border-radius: 1px;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  background: currentColor;
+  border: 0;
+}
+
+.event-marker.error {
+  border-color: var(--error);
+  background: var(--error);
 }
 
 .event-marker.more {
   width: 4px;
   height: 4px;
-  border-color: var(--text-soft);
-  background: var(--text-soft);
+  border-color: currentColor;
+  background: currentColor;
+  opacity: 0.7;
 }
 
-.inspector-section {
-  border-top: 1px solid var(--border);
-  padding: 10px 0;
+/* ---------------------------------------------------------- cell popover */
+
+.cell-popover {
+  position: absolute;
+  z-index: 8;
+  width: 260px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  box-shadow: 0 10px 28px rgb(34 37 42 / 16%);
+  padding: 10px 12px;
+  font-size: 12px;
 }
 
-.inspector-panel h2,
-.state-panel h2 {
-  margin: 0 0 6px;
-  color: var(--text);
-  font-size: 14px;
+.cell-popover h2 {
+  margin: 0 0 2px;
+  padding-right: 22px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
 }
+
+.cell-popover .muted {
+  margin: 0 0 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.popover-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
+/* ------------------------------------------------------------------ state */
 
 .muted {
-  color: var(--text-muted);
-  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 12.5px;
 }
 
 .event-list {
@@ -851,150 +971,205 @@ input {
   gap: 6px;
 }
 
-.drawer-body > .event-list {
-  padding: 10px;
-}
-
 .event-detail {
   display: grid;
   gap: 3px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 3px;
   padding: 8px;
   background: var(--panel);
   font-size: 12px;
 }
 
+.event-detail strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.event-detail span {
+  font-family: var(--sans);
+  font-size: 12.5px;
+}
+
 .event-detail.retire {
-  border-left: 3px solid var(--accent);
+  border-left-color: var(--st-wb);
 }
 
 .event-detail.stall {
+  border-left-color: var(--st-id);
   border-style: dashed;
+  border-left-style: solid;
+}
+
+.event-detail.branch {
+  border-left-color: var(--st-ex);
+}
+
+.event-detail.memory {
+  border-left-color: var(--st-mem);
 }
 
 .event-detail.flush {
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
+  border-left-color: var(--line-strong);
+  color: var(--muted);
+}
+
+.event-detail.error {
+  border-left-color: var(--error);
 }
 
 .diff-row {
-  font:
-    12px/1.6 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    monospace;
-  color: var(--text);
+  font: 12px/1.6 var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 
+.state-summary {
+  min-height: 30px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 0 8px 6px;
+  color: var(--muted);
+  font: 11px/1.5 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.state-summary-entry {
+  color: var(--ink);
+}
+
+/* Wide grid: all 32 registers visible without scrolling at the default
+ * strip height. Column count adapts to the strip width. */
 .register-grid {
   display: grid;
-  gap: 2px;
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 1px 18px;
 }
 
 .register-cell {
   min-width: 0;
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: baseline;
-  gap: 10px;
+  gap: 8px;
   border-left: 3px solid transparent;
   border-radius: 3px;
-  padding: 5px 8px;
+  padding: 2px 6px;
   background: var(--panel);
   font-size: 12px;
 }
 
 .register-cell:hover {
-  background: var(--surface);
+  background: var(--hover);
 }
 
+/* A register write is a WB-stage event, so it carries the WB hue. */
 .register-cell.changed {
-  border-left-color: var(--accent);
-  background: var(--accent-bg);
+  border-left-color: var(--st-wb);
+  background: var(--st-wb-tint);
+}
+
+/* Write highlight decays instead of snapping between cycles; layout stays put. */
+@media (prefers-reduced-motion: no-preference) {
+  .register-cell.changed {
+    animation: register-write-decay 1.1s ease-out forwards;
+  }
+
+  @keyframes register-write-decay {
+    from {
+      background-color: var(--st-wb-tint);
+    }
+
+    to {
+      background-color: transparent;
+    }
+  }
 }
 
 .register-name {
-  color: var(--text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--muted);
+  font-family: var(--mono);
   font-weight: 600;
 }
 
 .register-value {
-  color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 13px;
-  font-weight: 650;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.register-value-stack {
-  min-width: 0;
-  display: grid;
-  justify-items: end;
-  gap: 1px;
-}
-
 .register-secondary {
-  max-width: 100%;
-  color: var(--text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
+  min-width: 2.5ch;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.register-cell.changed .register-name,
-.register-cell.changed .register-value,
-.register-cell.changed .register-secondary {
-  color: var(--accent-text);
-}
+/* The write highlight must not change text weight, color, or metrics. */
 
-.register-cell.changed .register-value {
-  font-weight: 800;
-}
+/* ------------------------------------------------------------- undo toast */
 
-.tooltip,
-.select-content {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  color: var(--text);
+.undo-toast {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
-  box-shadow: 0 12px 34px rgb(0 0 0 / 12%);
+  background: var(--panel);
+  box-shadow: 0 10px 28px rgb(34 37 42 / 16%);
+  font-size: 12.5px;
+}
+
+.undo-toast-message {
+  font-family: var(--sans);
+  color: var(--ink);
+}
+
+.undo-toast-action {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.undo-toast-action:hover {
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------- tooltip */
+
+.tooltip {
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 11.5px;
   z-index: 20;
 }
 
-.tooltip {
-  padding: 5px 8px;
-  font-size: 12px;
-}
-
 .tooltip-arrow {
-  fill: var(--panel);
-}
-
-.select-content {
-  min-width: 260px;
-  padding: 4px;
-}
-
-.select-item {
-  height: 30px;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  border-radius: 3px;
-  outline: none;
-  font-size: 13px;
-}
-
-.select-item[data-highlighted] {
-  background: var(--accent-bg);
-  color: var(--accent-text);
+  fill: var(--ink);
 }
