@@ -181,10 +181,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
     if (registers[0] !== 0) registers[0] = toInt32(0);
     const stages = projectStages(ifSlot, latches);
     const timeline = buildTimeline(cycle, stages, events);
-    const occupancyTable = buildOccupancyTable([
-      ...state.history.flatMap((snapshot) => snapshot.timeline),
-      ...timeline,
-    ]);
+    const occupancyTable = appendOccupancyCells(previous.occupancyTable, timeline, cycle);
     const current: CycleSnapshot = {
       cycle,
       pc: previous.pc,
@@ -279,7 +276,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
 
   if (registers[0] !== 0) registers[0] = toInt32(0);
   const timeline = buildTimeline(cycle, stages, events);
-  const occupancyTable = buildOccupancyTable([...state.history.flatMap((snapshot) => snapshot.timeline), ...timeline]);
+  const occupancyTable = appendOccupancyCells(previous.occupancyTable, timeline, cycle);
   const halted = [nextIfSlot, ...Object.values(nextLatches)].every((slot) => slot === null);
   const current: CycleSnapshot = {
     cycle,
@@ -789,26 +786,27 @@ function buildTimeline(cycle: number, stages: StageSlots, events: PipelineEvent[
   return cells;
 }
 
-function buildOccupancyTable(cells: TimelineCell[]): string[] {
-  const symbol = { IF: "F", ID: "D", EX: "X", MEM: "M", WB: "W" } as const;
-  const maxCycle = Math.max(0, ...cells.map((cell) => cell.cycle));
-  const rows = new Map<number, { pc: ByteAddress; timeline: string[] }>();
+const STAGE_SYMBOLS = { IF: "F", ID: "D", EX: "X", MEM: "M", WB: "W" } as const;
 
+/** Extends the previous cycle's occupancy table with this cycle's cells. Rows are `S<seqId> <pc> <timeline>`. */
+function appendOccupancyCells(previousTable: string[], cells: TimelineCell[], cycle: number): string[] {
+  const rows = previousTable.map((row) => {
+    const [seq = "S0", pc = "", timeline = ""] = row.split(" ");
+    return { seqId: Number(seq.slice(1)), pc, timeline };
+  });
+  const rowIndexBySeqId = new Map(rows.map((row, index) => [row.seqId, index]));
   for (const cell of cells) {
-    const row =
-      rows.get(cell.seqId) ??
-      ({
-        pc: cell.pc,
-        timeline: Array.from({ length: maxCycle }, () => "."),
-      } satisfies { pc: ByteAddress; timeline: string[] });
-    while (row.timeline.length < maxCycle) row.timeline.push(".");
-    row.timeline[cell.cycle - 1] = symbol[cell.stage];
-    rows.set(cell.seqId, row);
+    const symbol = STAGE_SYMBOLS[cell.stage];
+    const index = rowIndexBySeqId.get(cell.seqId);
+    if (index == null) {
+      rows.push({ seqId: cell.seqId, pc: formatHex32(cell.pc), timeline: ".".repeat(cycle - 1) + symbol });
+      rowIndexBySeqId.set(cell.seqId, rows.length - 1);
+    } else {
+      const row = rows[index];
+      row.timeline = row.timeline.padEnd(cycle - 1, ".") + symbol;
+    }
   }
-
-  return Array.from(rows.entries())
-    .sort(([left], [right]) => left - right)
-    .map(([seqId, row]) => `S${seqId} ${formatHex32(row.pc)} ${row.timeline.join("").replace(/\.+$/, "")}`);
+  return rows.sort((left, right) => left.seqId - right.seqId).map((row) => `S${row.seqId} ${row.pc} ${row.timeline}`);
 }
 
 function eventId(cycle: number, label: string, instructionId?: number): string {
