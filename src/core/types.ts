@@ -251,7 +251,7 @@ export interface MemoryEffect {
 export interface RetireLogEntry {
   pc: ByteAddress;
   instructionWord: InstructionWord | null;
-  instruction: Instruction;
+  instruction?: Instruction;
   memoryEffect?: MemoryEffect;
   register?: RegisterIndex;
   registerValue?: Int32;
@@ -266,7 +266,10 @@ export interface StageSlot {
   instructionId: number;
   pc: ByteAddress;
   instructionWord: InstructionWord | null;
-  instruction: Instruction;
+  /** Decoded instruction. Absent when the slot carries only an error condition. */
+  instruction?: Instruction;
+  /** Display label: the instruction text, or a description of the error condition. */
+  text: string;
   decodeError?: DecodeError;
   error?: SimulatorError;
   rs1Val?: Int32;

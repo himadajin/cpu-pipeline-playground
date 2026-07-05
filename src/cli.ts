@@ -24,7 +24,7 @@ for (let index = 0; index < maxCycles && !simulation.current.halted; index += 1)
   simulation = stepSimulation(simulation);
   const snapshot = simulation.current;
   const stages = Object.entries(snapshot.stages)
-    .map(([stage, slot]) => `${stage}:${slot ? slot.instruction.text : "."}`)
+    .map(([stage, slot]) => `${stage}:${slot ? slot.text : "."}`)
     .join(" | ");
   console.log(`cycle ${snapshot.cycle} pc=${snapshot.pc} ${stages}`);
   for (const event of snapshot.events) {

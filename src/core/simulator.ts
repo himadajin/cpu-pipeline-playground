@@ -228,7 +228,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
       instructionId: latches.ifId.instructionId,
       kind: "stall",
       label: "stall",
-      message: `${latches.ifId.instruction.text} waits for an older writer to retire.`,
+      message: `${latches.ifId.text} waits for an older writer to retire.`,
     });
   }
 
@@ -240,7 +240,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
       instructionId: latches.idEx.instructionId,
       kind: "branch",
       label: "branch",
-      message: `${latches.idEx.instruction.text} redirects fetch to byte address ${exOutput?.nextPc ?? 0}.`,
+      message: `${latches.idEx.text} redirects fetch to byte address ${exOutput?.nextPc ?? 0}.`,
       detail: { target: exOutput?.nextPc ?? 0 },
     });
     for (const flushed of [ifSlot, latches.ifId]) {
@@ -252,7 +252,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
           instructionId: flushed.instructionId,
           kind: "flush",
           label: "flush",
-          message: `${flushed.instruction.text} is flushed by the taken branch.`,
+          message: `${flushed.text} is flushed by the taken branch.`,
           detail: { pc: flushed.pc },
         });
       }
@@ -347,15 +347,7 @@ function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress, seqId
       instructionId: -1,
       pc,
       instructionWord: null,
-      instruction: {
-        id: -1,
-        op: "addi",
-        rd: toRegisterIndex(0),
-        rs1: toRegisterIndex(0),
-        imm: toSigned12Immediate(0),
-        source: { line: 0, text: "" },
-        text: `misaligned fetch at ${pc}`,
-      },
+      text: `misaligned fetch at ${pc}`,
       error: { kind: "fetch-misaligned", message: `Misaligned fetch at byte address ${pc}.` },
     };
   }
@@ -365,15 +357,7 @@ function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress, seqId
       instructionId: -1,
       pc,
       instructionWord: null,
-      instruction: {
-        id: -1,
-        op: "addi",
-        rd: toRegisterIndex(0),
-        rs1: toRegisterIndex(0),
-        imm: toSigned12Immediate(0),
-        source: { line: 0, text: "" },
-        text: `unmapped fetch at ${pc}`,
-      },
+      text: `unmapped fetch at ${pc}`,
       error: { kind: "fetch-unmapped", message: `Unmapped fetch at byte address ${pc}.` },
     };
   }
@@ -381,14 +365,21 @@ function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress, seqId
   if (!fetched) return null;
   const decoded = decodeInstruction(fetched.word, pc, fetched.id, fetched.source, fetched.instruction?.text);
   if (decoded.ok) {
-    return { seqId, instructionId: fetched.id, pc, instructionWord: fetched.word, instruction: decoded.instruction };
+    return {
+      seqId,
+      instructionId: fetched.id,
+      pc,
+      instructionWord: fetched.word,
+      instruction: decoded.instruction,
+      text: decoded.instruction.text,
+    };
   }
   return {
     seqId,
     instructionId: fetched.id,
     pc,
     instructionWord: fetched.word,
-    instruction: invalidInstruction(fetched.id, fetched.source, fetched.instruction?.text ?? decoded.error.message),
+    text: fetched.instruction?.text ?? decoded.error.message,
     decodeError: decoded.error,
   };
 }
@@ -397,6 +388,7 @@ function runDecode(slot: StageSlot | null, registers: RegisterFile): Partial<Sta
   if (!slot) return null;
   const output: Partial<StageSlot> = {};
   if (slot.decodeError) output.error = slot.decodeError;
+  if (!slot.instruction) return output;
   if ("rs1" in slot.instruction) output.rs1Val = readRegister(slot.instruction.rs1, registers);
   if ("rs2" in slot.instruction) output.rs2Val = readRegister(slot.instruction.rs2, registers);
   return output;
@@ -449,7 +441,7 @@ function retireWriteback(
       instructionId: slot.instructionId,
       kind: "retire",
       label: "retire",
-      message: `${slot.instruction.text} writes x${rd}: ${before} -> ${after}.`,
+      message: `${slot.text} writes x${rd}: ${before} -> ${after}.`,
       detail: { register: `x${rd}`, before, after },
     });
   }
@@ -492,7 +484,7 @@ function runMemory(
   events: PipelineEvent[],
 ): Partial<StageSlot> | null {
   if (!slot) return null;
-  if (slot.error) return {};
+  if (slot.error || !slot.instruction) return {};
   const memOp = memoryOperation(slot.instruction);
   if (!memOp) return {};
 
@@ -504,7 +496,7 @@ function runMemory(
   if (address % memOp.width !== 0) {
     return memoryError(
       "mem-misaligned",
-      `${slot.instruction.text} cannot ${memOp.direction} misaligned ${widthName} address ${address}.`,
+      `${slot.text} cannot ${memOp.direction} misaligned ${widthName} address ${address}.`,
     );
   }
 
@@ -519,7 +511,7 @@ function runMemory(
       instructionId: slot.instructionId,
       kind: "memory",
       label: "load",
-      message: `${slot.instruction.text} reads ${widthName} at byte address ${address} = ${loadedValue}.`,
+      message: `${slot.text} reads ${widthName} at byte address ${address} = ${loadedValue}.`,
       detail: { address, value: loadedValue },
     });
     return { loadedValue, memoryEffect: { direction: "load", width: widthLabel, address, value: rawValue } };
@@ -539,7 +531,7 @@ function runMemory(
       instructionId: slot.instructionId,
       kind: "memory",
       label: "uart",
-      message: `${slot.instruction.text} writes byte ${byte} to UART data register.`,
+      message: `${slot.text} writes byte ${byte} to UART data register.`,
       detail: { address, value: byte },
     });
     return { memoryEffect };
@@ -548,7 +540,7 @@ function runMemory(
   if (access.kind === "exit") {
     const exitRequest = decodeExitRequest(value);
     if (!exitRequest) {
-      return memoryError("mmio-violation", `${slot.instruction.text} stores an undefined exit device value ${value}.`);
+      return memoryError("mmio-violation", `${slot.text} stores an undefined exit device value ${value}.`);
     }
     events.push(deviceStoreEvent(cycle, slot, "exit", address, value));
     return { exitRequest, memoryEffect };
@@ -568,7 +560,7 @@ function runMemory(
     instructionId: slot.instructionId,
     kind: "memory",
     label: "store",
-    message: `${slot.instruction.text} writes ${widthName} at byte address ${address}.`,
+    message: `${slot.text} writes ${widthName} at byte address ${address}.`,
     detail: { address, value: storedBits },
   });
   return { memoryEffect };
@@ -576,7 +568,7 @@ function runMemory(
 
 function runExecute(slot: StageSlot | null): Partial<StageSlot> | null {
   if (!slot) return null;
-  if (slot.error) return {};
+  if (slot.error || !slot.instruction) return {};
   // EX is a pure function of the ID/EX latch: operands were read by ID (spec §5).
   const rs1Val = slot.rs1Val ?? toInt32(0);
   const rs2Val = slot.rs2Val ?? toInt32(0);
@@ -761,7 +753,7 @@ function readRegister(register: RegisterIndex, registers: RegisterFile): Int32 {
 }
 
 function shouldStallForDataHazard(id: StageSlot | null, writers: Array<StageSlot | null>): boolean {
-  if (!id) return false;
+  if (!id?.instruction) return false;
   const sources = sourceRegisters(id.instruction);
   if (sources.length === 0) return false;
   return writers.some((writer) => {
@@ -772,7 +764,7 @@ function shouldStallForDataHazard(id: StageSlot | null, writers: Array<StageSlot
 }
 
 function writebackValue(slot: StageSlot | null): Int32 | null {
-  if (!slot) return null;
+  if (!slot?.instruction) return null;
   if (memoryOperation(slot.instruction)?.direction === "load") return slot.loadedValue ?? null;
   if (slot.instruction.op === "jal" || slot.instruction.op === "jalr") {
     return slot.result ?? toInt32(slot.pc + INSTRUCTION_SIZE_BYTES);
@@ -902,7 +894,7 @@ function deviceStoreEvent(
     instructionId: slot.instructionId,
     kind: "memory",
     label: device,
-    message: `${slot.instruction.text} writes ${toUint32(value)} to ${device} device register.`,
+    message: `${slot.text} writes ${toUint32(value)} to ${device} device register.`,
     detail: { address, value: toUint32(value) },
   };
 }

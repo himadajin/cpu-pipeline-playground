@@ -149,10 +149,10 @@ addi x3, x0, 7
   it("separates the during-cycle stage view from end-of-cycle latches while keeping bubbles distinct from real nop", () => {
     const simulation = stepSimulation(createSimulation(assembled("nop\naddi x1, x0, 1\n")));
 
-    expect(simulation.current.stages.IF?.instruction.text).toBe("nop");
+    expect(simulation.current.stages.IF?.instruction?.text).toBe("nop");
     expect(simulation.current.stages.ID).toBeNull();
     expect(simulation.current.ifSlot).toBeNull();
-    expect(simulation.current.latches.ifId?.instruction.text).toBe("nop");
+    expect(simulation.current.latches.ifId?.instruction?.text).toBe("nop");
     expect(simulation.current.latches.ifId?.instruction).toMatchObject({ op: "addi", rd: 0, rs1: 0, imm: 0 });
   });
 
@@ -170,7 +170,7 @@ addi x2, x0, 2
     const slots = simulation.history
       .flatMap((snapshot) => Object.values(snapshot.stages))
       .filter((slot) => slot != null);
-    const seenBySeqId = new Map(slots.map((slot) => [slot.seqId, slot.instruction.text]));
+    const seenBySeqId = new Map(slots.map((slot) => [slot.seqId, slot.text]));
 
     expect(Array.from(seenBySeqId.keys())).toEqual([0, 1, 2, 3]);
     expect(seenBySeqId.get(1)).toBe("addi x1, x0, 1");
@@ -774,7 +774,7 @@ addi x3, x2, 1
     const simulation = runSimulation(createSimulation(assembled("addi x1, x0, 1\nfence\nebreak\naddi x2, x1, 1\n")));
     const ebreakSlot = simulation.history
       .flatMap((snapshot) => Object.values(snapshot.stages))
-      .find((slot) => slot?.instruction.op === "ebreak" && slot.isEbreak);
+      .find((slot) => slot?.instruction?.op === "ebreak" && slot.isEbreak);
 
     expect(simulation.current.halted).toBe(true);
     expect(simulation.current.registers[1]).toBe(1);
