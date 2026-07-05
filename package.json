@@ -20,13 +20,11 @@
     "oracle:test": "tsx scripts/oracle/run-oracle-test.ts"
   },
   "dependencies": {
-    "@codemirror/lang-javascript": "^6.2.4",
     "@codemirror/language": "^6.11.3",
     "@codemirror/lint": "^6.8.5",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.3",
     "@radix-ui/colors": "^3.0.0",
-    "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.1.17",
     "@uiw/react-codemirror": "^4.25.2",

@@ -1,9 +1,7 @@
 import { linter, type Diagnostic } from "@codemirror/lint";
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { assemble, instructionSet } from "../core";
-
-const opcodes = instructionSet().join("|");
+import { assemble } from "../core";
 
 export function assemblyExtensions(): Extension[] {
   return [
@@ -39,14 +37,6 @@ export function assemblyExtensions(): Extension[] {
           message: error.message,
         };
       });
-    }),
-    EditorView.updateListener.of((update) => {
-      if (!update.docChanged) return;
-      const text = update.state.doc.toString();
-      const lastLine = text.split(/\r?\n/).at(-1) ?? "";
-      if (new RegExp(`^\\s*(?:${opcodes})\\b`, "i").test(lastLine)) {
-        return;
-      }
     }),
   ];
 }
