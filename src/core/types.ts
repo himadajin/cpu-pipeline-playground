@@ -214,7 +214,6 @@ export interface MemoryDiff {
 
 export interface ExitRequest {
   code: number;
-  success: boolean;
 }
 
 export type DecodeErrorKind = "undef-instr" | "ecall";

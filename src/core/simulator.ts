@@ -582,11 +582,6 @@ function runMemory(
       });
       return { memoryEffect };
     }
-    if (access.kind === "exit") {
-      const exitRequest = decodeExitRequest(after);
-      events.push(deviceStoreEvent(cycle, slot, "exit", address, after));
-      return { exitRequest, memoryEffect };
-    }
     const before = memory[address] ?? toByteValue(0);
     memory[address] = after;
     diffs.push({ address, before, after });
@@ -617,11 +612,6 @@ function runMemory(
       return memoryError("mmio-violation", `${slot.instruction.text} cannot store halfword to UART data register.`);
     }
     const memoryEffect: MemoryEffect = { direction: "store", width: "h", address, value: value & 0xffff };
-    if (access.kind === "exit") {
-      const exitRequest = decodeExitRequest(value & 0xffff);
-      events.push(deviceStoreEvent(cycle, slot, "exit", address, value & 0xffff));
-      return { exitRequest, memoryEffect };
-    }
     const bytes = [toByteValue(value), toByteValue(value >>> 8)];
     bytes.forEach((after, offset) => {
       const byteAddress = toByteAddress(address + offset);
@@ -655,6 +645,12 @@ function runMemory(
     const memoryEffect: MemoryEffect = { direction: "store", width: "w", address, value };
     if (access.kind === "exit") {
       const exitRequest = decodeExitRequest(value);
+      if (!exitRequest) {
+        return memoryError(
+          "mmio-violation",
+          `${slot.instruction.text} stores an undefined exit device value ${value}.`,
+        );
+      }
       events.push(deviceStoreEvent(cycle, slot, "exit", address, value));
       return { exitRequest, memoryEffect };
     }
@@ -979,7 +975,7 @@ function classifyDataAccess(address: ByteAddress, width: 1 | 2 | 4, direction: M
     return { ok: false, kind: "mmio-violation", message: `Invalid UART ${direction} at byte address ${unsigned}.` };
   }
   if (unsigned === RASK_EXIT_DEVICE_ADDRESS) {
-    if (direction === "store") return { ok: true, kind: "exit" };
+    if (direction === "store" && width === 4) return { ok: true, kind: "exit" };
     return {
       ok: false,
       kind: "mmio-violation",
@@ -997,9 +993,10 @@ function memoryError(kind: SimulatorError["kind"], message: string): Partial<Sta
   return { error: { kind, message } };
 }
 
-function decodeExitRequest(value: number): ExitRequest {
-  const code = value >>> 16;
-  return { code, success: (value & 0xffff) === 0x5555 };
+function decodeExitRequest(value: number): ExitRequest | null {
+  if (value === 0x00005555) return { code: 0 };
+  if ((value & 0xffff) === 0x3333) return { code: value >>> 16 };
+  return null;
 }
 
 function deviceStoreEvent(

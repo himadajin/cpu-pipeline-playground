@@ -699,11 +699,44 @@ addi x3, x2, 1
     const exitSlot = exit.history
       .flatMap((snapshot) => Object.values(snapshot.stages))
       .find((slot) => slot?.exitRequest);
-    expect(exitSlot?.exitRequest).toEqual({ code: 0, success: true });
+    expect(exitSlot?.exitRequest).toEqual({ code: 0 });
     expect(exit.history.flatMap((snapshot) => snapshot.memoryDiffs)).toEqual([]);
     expect(exit.current.terminalRecord).toEqual({ kind: "exit", code: 0 });
     expect(formatRetireLog(exit.current)).toContain("store w [00100000]=00005555");
     expect(formatRetireLog(exit.current).split("\n").at(-1)).toBe("EXIT 0");
+  });
+
+  it("exits with the failure code from the high half of a 0x3333 exit store", () => {
+    const simulation = runSimulation(
+      createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 0x00013333 } }),
+    );
+    expect(simulation.current.terminalRecord).toEqual({ kind: "exit", code: 1 });
+    expect(formatRetireLog(simulation.current).split("\n").at(-1)).toBe("EXIT 1");
+  });
+
+  it("treats non-word stores and undefined values on the exit device as mmio violations", () => {
+    const byteStore = runSimulation(
+      createSimulation(assembled("sb x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 0x55 } }),
+    );
+    expect(byteStore.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "mmio-violation" });
+
+    const halfStore = runSimulation(
+      createSimulation(assembled("sh x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 0x5555 } }),
+    );
+    expect(halfStore.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "mmio-violation" });
+
+    const undefinedValue = runSimulation(
+      createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 42 } }),
+    );
+    expect(undefinedValue.current.terminalRecord).toMatchObject({ kind: "error", errorKind: "mmio-violation" });
+
+    const highBitsWithSuccessPattern = runSimulation(
+      createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 0x00015555 } }),
+    );
+    expect(highBitsWithSuccessPattern.current.terminalRecord).toMatchObject({
+      kind: "error",
+      errorKind: "mmio-violation",
+    });
   });
 
   it("suppresses device side effects when a device access errors", () => {
