@@ -10,20 +10,21 @@ export function assemblyExtensions(): Extension[] {
       "&": {
         height: "100%",
         backgroundColor: "var(--panel)",
-        color: "var(--text)",
+        color: "var(--ink)",
       },
       ".cm-content": {
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        fontFamily: "var(--mono)",
         fontSize: "13px",
         lineHeight: "1.55",
       },
       ".cm-gutters": {
-        backgroundColor: "var(--surface)",
-        color: "var(--text-soft)",
-        borderRight: "1px solid var(--border)",
+        backgroundColor: "var(--paper)",
+        color: "var(--soft)",
+        borderRight: "1px solid var(--line)",
+        fontFamily: "var(--mono)",
       },
-      ".cm-activeLine": { backgroundColor: "var(--accent-bg)" },
-      ".cm-activeLineGutter": { backgroundColor: "var(--accent-bg)", color: "var(--accent-text)" },
+      ".cm-activeLine": { backgroundColor: "var(--hover)" },
+      ".cm-activeLineGutter": { backgroundColor: "var(--hover)", color: "var(--ink)" },
       ".cm-scroller": { overflow: "auto" },
     }),
     linter((view) => {
