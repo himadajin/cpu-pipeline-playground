@@ -2,6 +2,7 @@ import clsx from "clsx";
 import { X } from "lucide-react";
 import { lazy, Suspense, type PointerEvent as ReactPointerEvent } from "react";
 import type { CycleSnapshot, SelectedCell } from "../../core";
+import { pluralize } from "../format";
 import type { BottomTab } from "../hooks/useWorkbenchLayout";
 import { EventList } from "./EventList";
 import { TabButton } from "./TabButton";
@@ -76,7 +77,7 @@ export function BottomDrawer({
         <div className="header-status">
           {activeTab === "assembly" && invalidated && <span className="mini-status warn">modified after run</span>}
           {activeTab === "assembly" && (
-            <span className={clsx("mini-status", lintCount > 0 && "bad")}>{lintCount} errors</span>
+            <span className={clsx("mini-status", lintCount > 0 && "bad")}>{pluralize(lintCount, "error")}</span>
           )}
           {activeTab === "events" && (
             <span className="mini-status">
