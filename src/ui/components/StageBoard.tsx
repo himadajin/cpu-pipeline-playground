@@ -10,7 +10,9 @@ export function StageBoard({ snapshot }: { snapshot: CycleSnapshot }) {
         return (
           <div className="stage-tile" key={stage}>
             <div className="stage-name">{stage}</div>
-            <div className="stage-inst">{slot?.text ?? "."}</div>
+            <div className="stage-inst" title={slot?.text ?? "."}>
+              {slot?.text ?? "."}
+            </div>
           </div>
         );
       })}
