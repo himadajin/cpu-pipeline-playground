@@ -144,26 +144,32 @@ function RegistersPanel({ snapshot }: { snapshot: CycleSnapshot }) {
 
   return (
     <section className="state-panel">
-      {snapshot.registerDiffs.length > 0 && (
-        <div className="inspector-section">
-          <h2>Register Diffs</h2>
-          {snapshot.registerDiffs.map((diff) => (
-            <div className="diff-row" key={diff.register}>
-              x{diff.register}: {formatValue(diff.before)} {"->"} {formatValue(diff.after)}
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Always mounted so the grid below never shifts when a write appears. */}
+      <div className="state-summary" aria-label="Register writes in this cycle">
+        {snapshot.registerDiffs.length > 0
+          ? snapshot.registerDiffs.map((diff) => (
+              <span className="state-summary-entry" key={diff.register}>
+                x{diff.register} {toHex32(diff.before)} {"->"} {toHex32(diff.after)}
+              </span>
+            ))
+          : `write @ cycle ${snapshot.cycle}: -`}
+      </div>
       <div className="register-grid" aria-label="Registers">
-        {snapshot.registers.map((value, index) => (
-          <div className={clsx("register-cell", changedRegisters.has(index) && "changed")} key={index}>
-            <span className="register-name">x{index}</span>
-            <span className="register-value-stack">
-              <strong className="register-value">{toHex32(value)}</strong>
-              <span className="register-secondary">{toInt32(value)}</span>
-            </span>
-          </div>
-        ))}
+        {snapshot.registers.map((value, index) => {
+          const changed = changedRegisters.has(index);
+          return (
+            <div
+              className={clsx("register-cell", changed && "changed")}
+              key={changed ? `${snapshot.cycle}:${index}` : index}
+            >
+              <span className="register-name">x{index}</span>
+              <span className="register-value-stack">
+                <strong className="register-value">{toHex32(value)}</strong>
+                <span className="register-secondary">{toInt32(value)}</span>
+              </span>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -174,16 +180,18 @@ function MemoryPanel({ snapshot }: { snapshot: CycleSnapshot }) {
 
   return (
     <section className="state-panel">
-      {snapshot.memoryDiffs.length > 0 && (
-        <div className="inspector-section">
-          <h2>Memory Diffs</h2>
-          {snapshot.memoryDiffs.map((diff) => (
-            <div className="diff-row" key={diff.address}>
+      {/* Always mounted so the word list below never shifts when a write appears. */}
+      <div className="state-summary" aria-label="Memory writes in this cycle">
+        {snapshot.memoryDiffs.length > 0 ? (
+          snapshot.memoryDiffs.map((diff) => (
+            <span className="state-summary-entry" key={diff.address}>
               [{toHex32(diff.address)}]: {formatByte(diff.before)} {"->"} {formatByte(diff.after)}
-            </div>
-          ))}
-        </div>
-      )}
+            </span>
+          ))
+        ) : (
+          <>write @ cycle {snapshot.cycle}: -</>
+        )}
+      </div>
       <div className="inspector-section">
         <h2>Memory</h2>
         {entries.length === 0 ? (
@@ -199,10 +207,6 @@ function MemoryPanel({ snapshot }: { snapshot: CycleSnapshot }) {
       </div>
     </section>
   );
-}
-
-function formatValue(value: number): string {
-  return `${toHex32(value)} (${toInt32(value)})`;
 }
 
 function formatByte(value: number): string {

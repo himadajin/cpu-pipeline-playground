@@ -31,12 +31,23 @@ export function Timeline({
   const rows = buildRows(cells, instructionMap);
   const cellMap = new Map(cells.map((cell) => [`${cell.seqId}:${cell.cycle}`, cell]));
   const rowStyle = { gridTemplateColumns: `148px repeat(${cycles.length}, 72px)` };
+  const shellRef = useRef<HTMLElement | null>(null);
   const currentCycleRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    currentCycleRef.current?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+    const shell = shellRef.current;
+    const target = currentCycleRef.current;
+    if (!shell || !target) return;
+    // Scroll only when the current cycle column leaves the visible area, so
+    // stepping does not nudge the viewport on every cycle. The sticky
+    // instruction column covers the left edge of the shell.
+    const stickyWidth = 148;
+    const shellRect = shell.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const outOfView = targetRect.left < shellRect.left + stickyWidth || targetRect.right > shellRect.right;
+    if (outOfView) target.scrollIntoView?.({ inline: "nearest", block: "nearest" });
   }, [currentCycle]);
   return (
-    <section className="timeline-shell">
+    <section className="timeline-shell" ref={shellRef}>
       <div className="timeline" role="grid" aria-label="Pipeline timeline">
         <div className="timeline-row header-row" style={rowStyle}>
           <div className="instruction-header">Instruction</div>
