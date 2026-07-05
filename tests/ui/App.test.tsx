@@ -111,6 +111,32 @@ describe("App", () => {
     expect(container).toHaveTextContent("[0x80010000]: 0x00 -> 0xff");
   });
 
+  it("attaches retire markers to W cells and branch markers to X cells", async () => {
+    window.localStorage.setItem(
+      PROGRAM_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "hazard",
+          name: "Hazard",
+          source: "addi x5, x0, 3\nadd x6, x5, x5\nbeq x6, x6, target\naddi x7, x0, 1\ntarget:\naddi x8, x0, 2\n",
+          updatedAt: 0,
+        },
+      ]),
+    );
+    const { container } = render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    // 16 cycles run the representative hazard program to completion.
+    for (let index = 0; index < 16; index += 1) {
+      await userEvent.click(screen.getByRole("button", { name: "Step" }));
+    }
+
+    expect(container.querySelectorAll(".timeline-cell.wb .event-marker.retire").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll(".timeline-cell.ex .event-marker.branch").length).toBeGreaterThan(0);
+    // The pre-fix symptoms: orphaned retire markers and branch markers on MEM cells.
+    expect(container.querySelector(".timeline-cell.mem .event-marker.branch")).toBeNull();
+    expect(container.querySelector(".timeline-cell.wb .event-marker.memory")).toBeNull();
+  });
+
   it("shows a paused badge when an ebreak retires", async () => {
     window.localStorage.setItem(
       PROGRAM_STORAGE_KEY,
