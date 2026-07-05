@@ -1,13 +1,12 @@
 import * as Tooltip from "@radix-ui/react-tooltip";
-import clsx from "clsx";
 import { Pause, Play, RotateCcw, StepBack, StepForward } from "lucide-react";
 import { useMemo } from "react";
 import type { StageName } from "../core";
 import type { ExecutedLine } from "./asmLanguage";
-import { BottomDrawer } from "./components/BottomDrawer";
+import { CodePane } from "./components/CodePane";
 import { PipelinePanel } from "./components/PipelinePanel";
 import { ProgramSwitcher } from "./components/ProgramSwitcher";
-import { RightDock } from "./components/RightDock";
+import { StateStrip } from "./components/StateStrip";
 import { ToolbarButton } from "./components/ToolbarButton";
 import { usePrograms } from "./hooks/usePrograms";
 import { useSimulationSession } from "./hooks/useSimulationSession";
@@ -32,9 +31,6 @@ export function App() {
     running,
     selectedCell,
     selectedEvents,
-    selectedInstruction,
-    selectedSnapshot,
-    selectedTimelineCell,
     simulation,
     timelineCells,
     viewSnapshot,
@@ -90,13 +86,23 @@ export function App() {
         <main
           className="workbench"
           style={{
-            gridTemplateColumns: `minmax(0, 1fr) ${layout.rightOpen ? layout.rightWidth : dimensions.rightRailWidth}px`,
+            gridTemplateColumns: `${layout.codeOpen ? layout.codeWidth : dimensions.codeRailWidth}px minmax(0, 1fr)`,
           }}
         >
+          <CodePane
+            open={layout.codeOpen}
+            onOpenChange={workbenchLayout.actions.setCodeOpen}
+            onResizeStart={workbenchLayout.actions.startCodeResize}
+            invalidated={invalidated}
+            lintCount={lintCount}
+            source={selectedProgram.source}
+            executedLines={executedLines}
+            onSourceChange={(value) => programLibrary.actions.updateSelectedProgram({ source: value })}
+          />
           <section
-            className="center-pane"
+            className="observe-pane"
             style={{
-              gridTemplateRows: `minmax(0, 1fr) ${layout.bottomOpen ? layout.bottomHeight : dimensions.bottomRailHeight}px`,
+              gridTemplateRows: `minmax(0, 1fr) ${layout.stateOpen ? layout.stateHeight : dimensions.stateRailHeight}px`,
             }}
           >
             <PipelinePanel
@@ -105,43 +111,24 @@ export function App() {
               current={simulation.current}
               cursor={cursor}
               invalidated={invalidated}
+              onClearSelection={session.actions.clearSelection}
               onCursorChange={session.actions.setCursor}
               onJumpToLatest={session.actions.jumpToLatest}
               onSelectCell={session.actions.selectCell}
               selectedCell={selectedCell}
+              selectedEvents={selectedEvents}
             />
-            <BottomDrawer
-              activeTab={layout.bottomTab}
-              open={layout.bottomOpen}
-              onTabChange={workbenchLayout.actions.selectBottomTab}
-              onOpenChange={workbenchLayout.actions.setBottomOpen}
-              onResizeStart={workbenchLayout.actions.startBottomResize}
-              snapshot={viewSnapshot}
-              selectedCell={selectedCell}
-              invalidated={invalidated}
-              lintCount={lintCount}
-              source={selectedProgram.source}
-              executedLines={executedLines}
-              onSourceChange={(value) => programLibrary.actions.updateSelectedProgram({ source: value })}
-            />
-          </section>
-
-          <aside className={clsx("right-pane", !layout.rightOpen && "collapsed")}>
-            <RightDock
-              activeTab={layout.rightTab}
-              open={layout.rightOpen}
-              onTabChange={workbenchLayout.actions.selectRightTab}
-              onOpenChange={workbenchLayout.actions.setRightOpen}
-              onResizeStart={workbenchLayout.actions.startRightResize}
+            <StateStrip
+              activeTab={layout.stateTab}
+              open={layout.stateOpen}
+              onTabChange={workbenchLayout.actions.selectStateTab}
+              onOpenChange={workbenchLayout.actions.setStateOpen}
+              onResizeStart={workbenchLayout.actions.startStateResize}
               registerNames={layout.registerNames}
               onRegisterNamesChange={workbenchLayout.actions.setRegisterNames}
-              selectedInstruction={selectedInstruction}
-              selectedSnapshot={selectedSnapshot}
-              selectedTimelineCell={selectedTimelineCell}
-              selectedEvents={selectedEvents}
-              stateSnapshot={viewSnapshot}
+              snapshot={viewSnapshot}
             />
-          </aside>
+          </section>
         </main>
       </div>
     </Tooltip.Provider>

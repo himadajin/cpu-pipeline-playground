@@ -1,14 +1,20 @@
 import clsx from "clsx";
+import { X } from "lucide-react";
 import {
   useEffect,
   useRef,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { CycleSnapshot, Instruction, PipelineEvent, SelectedCell } from "../../core";
+import { EventList } from "./EventList";
 
+const TIMELINE_PADDING = 10;
 const LABEL_COLUMN_WIDTH = 148;
 const CYCLE_COLUMN_WIDTH = 72;
+const ROW_HEIGHT = 40;
+const POPOVER_WIDTH = 260;
 
 interface TimelineRow {
   seqId: number;
@@ -23,7 +29,9 @@ export function Timeline({
   cursor,
   latestCycle,
   selectedCell,
+  selectedEvents,
   onSelect,
+  onClearSelection,
   onCursorChange,
 }: {
   instructions: Instruction[];
@@ -31,7 +39,9 @@ export function Timeline({
   cursor: number;
   latestCycle: number;
   selectedCell: SelectedCell | null;
+  selectedEvents: PipelineEvent[];
   onSelect: (cell: SelectedCell) => void;
+  onClearSelection: () => void;
   onCursorChange: (cycle: number) => void;
 }) {
   // Cycle numbers are 1-origin (spec §4); cycle 0 is the pre-execution reset state and has no column.
@@ -96,9 +106,44 @@ export function Timeline({
     }
   }
 
+  function closeSelection(returnFocus: boolean) {
+    const target = selectedCell;
+    onClearSelection();
+    if (returnFocus && target) {
+      shellRef.current?.querySelector<HTMLButtonElement>(`[data-cell="${target.seqId}:${target.cycle}"]`)?.focus();
+    }
+  }
+
+  function handleTimelineClick(event: ReactMouseEvent<HTMLDivElement>) {
+    const target = event.target as Element;
+    // Clicking the empty canvas dismisses the popover; cells, the popover
+    // itself, and the ruler (cursor scrubbing) keep the selection alive.
+    if (!target.closest(".timeline-cell") && !target.closest(".cell-popover") && !target.closest(".header-row")) {
+      onClearSelection();
+    }
+  }
+
+  function handleTimelineKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape" && selectedCell) {
+      event.stopPropagation();
+      closeSelection(true);
+    }
+  }
+
+  const selectedRowIndex = selectedCell ? rows.findIndex((row) => row.seqId === selectedCell.seqId) : -1;
+  const selectedTimelineCell = selectedCell
+    ? (cellMap.get(`${selectedCell.seqId}:${selectedCell.cycle}`) ?? null)
+    : null;
+
   return (
     <section className="timeline-shell" ref={shellRef}>
-      <div className="timeline" role="grid" aria-label="Pipeline timeline">
+      <div
+        className="timeline"
+        role="grid"
+        aria-label="Pipeline timeline"
+        onClick={handleTimelineClick}
+        onKeyDown={handleTimelineKeyDown}
+      >
         <div
           className="timeline-row header-row"
           style={rowStyle}
@@ -158,6 +203,7 @@ export function Timeline({
                     selected && "selected",
                   )}
                   key={cycle}
+                  data-cell={`${row.seqId}:${cycle}`}
                   disabled={!cell}
                   onClick={() => {
                     if (cell) onSelect({ cycle, seqId: row.seqId, instructionId: row.instructionId });
@@ -170,8 +216,81 @@ export function Timeline({
             })}
           </div>
         ))}
+        {selectedCell && selectedTimelineCell && selectedRowIndex >= 0 && (
+          <CellPopover
+            cell={selectedTimelineCell}
+            cellKey={`${selectedCell.seqId}:${selectedCell.cycle}`}
+            events={selectedEvents}
+            instruction={instructionMap.get(selectedCell.instructionId)}
+            position={popoverPosition(selectedCell.cycle, selectedRowIndex, cycles.length)}
+            onClose={closeSelection}
+          />
+        )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Places the popover beside and below the selected cell using the fixed
+ * timeline geometry; flips to the left of the cell near the right edge.
+ */
+function popoverPosition(cycle: number, rowIndex: number, cycleCount: number): { left: number; top: number } {
+  const cellLeft = TIMELINE_PADDING + LABEL_COLUMN_WIDTH + (cycle - 1) * CYCLE_COLUMN_WIDTH;
+  const timelineWidth = TIMELINE_PADDING * 2 + LABEL_COLUMN_WIDTH + cycleCount * CYCLE_COLUMN_WIDTH;
+  let left = cellLeft + CYCLE_COLUMN_WIDTH + 8;
+  if (left + POPOVER_WIDTH > timelineWidth) {
+    left = Math.max(TIMELINE_PADDING, cellLeft - POPOVER_WIDTH - 8);
+  }
+  const top = TIMELINE_PADDING + ROW_HEIGHT + rowIndex * ROW_HEIGHT + ROW_HEIGHT + 6;
+  return { left, top };
+}
+
+function CellPopover({
+  cell,
+  cellKey,
+  events,
+  instruction,
+  position,
+  onClose,
+}: {
+  cell: CycleSnapshot["timeline"][number];
+  cellKey: string;
+  events: PipelineEvent[];
+  instruction: Instruction | undefined;
+  position: { left: number; top: number };
+  onClose: (returnFocus: boolean) => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, [cellKey]);
+
+  return (
+    <div
+      className="cell-popover"
+      role="dialog"
+      aria-label="Cell details"
+      tabIndex={-1}
+      ref={dialogRef}
+      style={position}
+    >
+      <button
+        className="panel-close-button popover-close"
+        type="button"
+        aria-label="Close cell details"
+        onClick={() => onClose(false)}
+      >
+        <X size={13} />
+      </button>
+      <h2>{instruction?.text ?? `pc 0x${formatHex(cell.pc)}`}</h2>
+      <p className="muted">
+        S{cell.seqId}, {cell.stage}, cycle {cell.cycle}
+        {instruction ? `, line ${instruction.source.line}` : ""}
+      </p>
+      <EventList events={events} emptyText="No event is attached to this dynamic instruction in the selected cycle." />
+    </div>
   );
 }
 

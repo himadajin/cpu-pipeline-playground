@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import type { AssembleResult, CycleSnapshot, SelectedCell } from "../../core";
+import type { AssembleResult, CycleSnapshot, PipelineEvent, SelectedCell } from "../../core";
 import { pluralize } from "../format";
 import { Timeline } from "./Timeline";
 
@@ -9,20 +9,24 @@ export function PipelinePanel({
   current,
   cursor,
   invalidated,
+  onClearSelection,
   onCursorChange,
   onJumpToLatest,
   onSelectCell,
   selectedCell,
+  selectedEvents,
 }: {
   assembled: AssembleResult;
   cells: CycleSnapshot["timeline"];
   current: CycleSnapshot;
   cursor: number;
   invalidated: boolean;
+  onClearSelection: () => void;
   onCursorChange: (cycle: number) => void;
   onJumpToLatest: () => void;
   onSelectCell: (cell: SelectedCell) => void;
   selectedCell: SelectedCell | null;
+  selectedEvents: PipelineEvent[];
 }) {
   const latestCycle = current.cycle;
   const viewingPast = cursor < latestCycle;
@@ -58,7 +62,9 @@ export function PipelinePanel({
         cursor={cursor}
         latestCycle={latestCycle}
         selectedCell={selectedCell}
+        selectedEvents={selectedEvents}
         onSelect={onSelectCell}
+        onClearSelection={onClearSelection}
         onCursorChange={onCursorChange}
       />
     </section>

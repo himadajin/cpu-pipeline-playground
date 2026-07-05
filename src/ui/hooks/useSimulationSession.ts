@@ -135,6 +135,10 @@ export function useSimulationSession({ programId, source }: { programId: string;
     }));
   }
 
+  function clearSelection() {
+    setState((current) => (current.selectedCell ? { ...current, selectedCell: null } : current));
+  }
+
   function toggleRun() {
     if (invalidated || !assembled.ok) return;
     setState((current) => ({ ...current, running: !current.running }));
@@ -191,6 +195,7 @@ export function useSimulationSession({ programId, source }: { programId: string;
       setCursor,
       jumpToLatest,
       selectCell,
+      clearSelection,
       toggleRun,
     },
   };

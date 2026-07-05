@@ -2,13 +2,19 @@ import clsx from "clsx";
 import { X } from "lucide-react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { toHex32, toInt32 } from "../../core";
-import type { CycleSnapshot, Instruction, PipelineEvent } from "../../core";
-import type { RegisterNameStyle, RightTab } from "../hooks/useWorkbenchLayout";
+import type { CycleSnapshot } from "../../core";
+import type { RegisterNameStyle, StateTab } from "../hooks/useWorkbenchLayout";
 import { registerName } from "../registerNames";
 import { EventList } from "./EventList";
 import { TabButton } from "./TabButton";
 
-export function RightDock({
+const STATE_TABS: Array<{ id: StateTab; label: string }> = [
+  { id: "registers", label: "Registers" },
+  { id: "memory", label: "Memory" },
+  { id: "events", label: "Events" },
+];
+
+export function StateStrip({
   activeTab,
   open,
   onTabChange,
@@ -16,76 +22,51 @@ export function RightDock({
   onResizeStart,
   registerNames,
   onRegisterNamesChange,
-  selectedInstruction,
-  selectedSnapshot,
-  selectedTimelineCell,
-  selectedEvents,
-  stateSnapshot,
+  snapshot,
 }: {
-  activeTab: RightTab;
+  activeTab: StateTab;
   open: boolean;
-  onTabChange: (tab: RightTab) => void;
+  onTabChange: (tab: StateTab) => void;
   onOpenChange: (open: boolean) => void;
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   registerNames: RegisterNameStyle;
   onRegisterNamesChange: (style: RegisterNameStyle) => void;
-  selectedInstruction: Instruction | null | undefined;
-  selectedSnapshot: CycleSnapshot | undefined;
-  selectedTimelineCell: CycleSnapshot["timeline"][number] | null;
-  selectedEvents: PipelineEvent[];
-  /** Snapshot shown by the Registers / Memory tabs: always the cursor cycle. */
-  stateSnapshot: CycleSnapshot;
+  /** Machine state at the cursor cycle; every tab of the strip reads from it. */
+  snapshot: CycleSnapshot;
 }) {
   if (!open) {
     return (
-      <section className="right-rail" aria-label="Right dock rail">
-        <button
-          className={clsx("rail-tab vertical", activeTab === "inspector" && "active")}
-          type="button"
-          onClick={() => onTabChange("inspector")}
-          aria-label="Open Inspector"
-        >
-          Inspector
-        </button>
-        <button
-          className={clsx("rail-tab vertical", activeTab === "registers" && "active")}
-          type="button"
-          onClick={() => onTabChange("registers")}
-          aria-label="Open Registers"
-        >
-          Registers
-        </button>
-        <button
-          className={clsx("rail-tab vertical", activeTab === "memory" && "active")}
-          type="button"
-          onClick={() => onTabChange("memory")}
-          aria-label="Open Memory"
-        >
-          Memory
-        </button>
+      <section className="state-rail" aria-label="State strip rail">
+        {STATE_TABS.map((tab) => (
+          <button
+            className={clsx("rail-tab", activeTab === tab.id && "active")}
+            type="button"
+            key={tab.id}
+            onClick={() => onTabChange(tab.id)}
+            aria-label={`Open ${tab.label}`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </section>
     );
   }
 
   return (
-    <section className="right-dock">
+    <section className="state-strip">
       <button
-        className="resize-handle right-resizer"
+        className="resize-handle state-resizer"
         type="button"
-        aria-label="Resize right dock"
+        aria-label="Resize state strip"
         onPointerDown={onResizeStart}
       />
       <div className="tab-bar">
-        <div className="tab-list" role="tablist" aria-label="Inspector dock">
-          <TabButton id="inspector" active={activeTab === "inspector"} onSelect={onTabChange}>
-            Inspector
-          </TabButton>
-          <TabButton id="registers" active={activeTab === "registers"} onSelect={onTabChange}>
-            Registers
-          </TabButton>
-          <TabButton id="memory" active={activeTab === "memory"} onSelect={onTabChange}>
-            Memory
-          </TabButton>
+        <div className="tab-list" role="tablist" aria-label="State strip">
+          {STATE_TABS.map((tab) => (
+            <TabButton id={tab.id} key={tab.id} active={activeTab === tab.id} onSelect={onTabChange}>
+              {tab.label}
+            </TabButton>
+          ))}
         </div>
         <div className="header-status">
           {activeTab === "registers" && (
@@ -111,57 +92,18 @@ export function RightDock({
           <button
             className="panel-close-button"
             type="button"
-            aria-label="Close right dock"
+            aria-label="Close state strip"
             onClick={() => onOpenChange(false)}
           >
             <X size={13} />
           </button>
         </div>
       </div>
-      <div className="dock-body">
-        {activeTab === "inspector" && (
-          <InspectorPanel
-            selectedInstruction={selectedInstruction}
-            selectedSnapshot={selectedSnapshot}
-            selectedTimelineCell={selectedTimelineCell}
-            selectedEvents={selectedEvents}
-          />
-        )}
-        {activeTab === "registers" && <RegistersPanel snapshot={stateSnapshot} nameStyle={registerNames} />}
-        {activeTab === "memory" && <MemoryPanel snapshot={stateSnapshot} />}
+      <div className="state-body">
+        {activeTab === "registers" && <RegistersPanel snapshot={snapshot} nameStyle={registerNames} />}
+        {activeTab === "memory" && <MemoryPanel snapshot={snapshot} />}
+        {activeTab === "events" && <EventList events={snapshot.events} emptyText="No events in this cycle." />}
       </div>
-    </section>
-  );
-}
-
-function InspectorPanel({
-  selectedInstruction,
-  selectedSnapshot,
-  selectedTimelineCell,
-  selectedEvents,
-}: {
-  selectedInstruction: Instruction | null | undefined;
-  selectedSnapshot: CycleSnapshot | undefined;
-  selectedTimelineCell: CycleSnapshot["timeline"][number] | null;
-  selectedEvents: PipelineEvent[];
-}) {
-  return (
-    <section className="inspector-panel">
-      {selectedTimelineCell ? (
-        <div className="inspector-section">
-          <h2>{selectedInstruction?.text ?? `pc 0x${formatHex(selectedTimelineCell.pc)}`}</h2>
-          <p className="muted">
-            S{selectedTimelineCell.seqId}, {selectedTimelineCell.stage}, cycle {selectedSnapshot?.cycle ?? "-"}
-            {selectedInstruction ? `, line ${selectedInstruction.source.line}` : ""}
-          </p>
-          <EventList
-            events={selectedEvents}
-            emptyText="No event is attached to this dynamic instruction in the selected cycle."
-          />
-        </div>
-      ) : (
-        <p className="muted">Select a timeline cell to inspect stalls, flushes, retires, and diffs.</p>
-      )}
     </section>
   );
 }
@@ -192,10 +134,8 @@ function RegistersPanel({ snapshot, nameStyle }: { snapshot: CycleSnapshot; name
               <span className="register-name" title={registerName(index, nameStyle === "abi" ? "numeric" : "abi")}>
                 {registerName(index, nameStyle)}
               </span>
-              <span className="register-value-stack">
-                <strong className="register-value">{toHex32(value)}</strong>
-                <span className="register-secondary">{toInt32(value)}</span>
-              </span>
+              <strong className="register-value">{toHex32(value)}</strong>
+              <span className="register-secondary">{toInt32(value)}</span>
             </div>
           );
         })}
@@ -221,29 +161,21 @@ function MemoryPanel({ snapshot }: { snapshot: CycleSnapshot }) {
           <>write @ cycle {snapshot.cycle}: -</>
         )}
       </div>
-      <div className="inspector-section">
-        <h2>Memory</h2>
-        {entries.length === 0 ? (
-          <p className="muted">No memory writes yet.</p>
-        ) : (
-          entries.map(({ address, bytes, value }) => (
-            <div className="diff-row" key={address}>
-              [{toHex32(address)}] {toHex32(value)}{" "}
-              <span className="muted">bytes {bytes.map(formatByte).join(" ")}</span>
-            </div>
-          ))
-        )}
-      </div>
+      {entries.length === 0 ? (
+        <p className="muted">No memory writes yet.</p>
+      ) : (
+        entries.map(({ address, bytes, value }) => (
+          <div className="diff-row" key={address}>
+            [{toHex32(address)}] {toHex32(value)} <span className="muted">bytes {bytes.map(formatByte).join(" ")}</span>
+          </div>
+        ))
+      )}
     </section>
   );
 }
 
 function formatByte(value: number): string {
   return `0x${(value & 0xff).toString(16).padStart(2, "0")}`;
-}
-
-function formatHex(value: number): string {
-  return (value >>> 0).toString(16).padStart(8, "0");
 }
 
 function groupMemoryWords(memory: Record<number, number>): Array<{ address: number; bytes: number[]; value: number }> {
