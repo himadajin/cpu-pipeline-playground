@@ -29,7 +29,7 @@ import type {
 } from "./types";
 import { createExecutionImage } from "./assembler";
 import { decodeInstruction } from "./instructionCodec";
-import { destinationRegister, sourceRegisters } from "./instructionMetadata";
+import { destinationRegister, memoryOperation, sourceRegisters } from "./instructionMetadata";
 import {
   RASK_EXIT_DEVICE_ADDRESS,
   RASK_EXIT_REGION_BASE,
@@ -53,6 +53,8 @@ import {
 
 const STAGES: StageName[] = ["IF", "ID", "EX", "MEM", "WB"];
 const INSTRUCTION_SIZE_BYTES = 4;
+const MEMORY_WIDTH_LABELS: Record<1 | 2 | 4, MemoryEffect["width"]> = { 1: "b", 2: "h", 4: "w" };
+const MEMORY_WIDTH_NAMES: Record<1 | 2 | 4, string> = { 1: "byte", 2: "halfword", 4: "word" };
 
 interface RunSimulationOptions {
   stopOnPause?: boolean;
@@ -491,16 +493,25 @@ function runMemory(
 ): Partial<StageSlot> | null {
   if (!slot) return null;
   if (slot.error) return {};
-  if (slot.instruction.op === "lb" || slot.instruction.op === "lbu") {
-    const address = slot.address ?? toByteAddress(0);
-    const access = classifyDataAccess(address, 1, "load");
-    if (!access.ok) return memoryError(access.kind, access.message);
-    if (access.kind !== "ram") {
-      return memoryError("mmio-violation", `${slot.instruction.text} cannot load from device byte address ${address}.`);
-    }
-    const rawValue = (memory[address] ?? 0) & 0xff;
-    const loadedValue =
-      slot.instruction.op === "lb" ? readSignedByte(memory, address) : readUnsignedByte(memory, address);
+  const memOp = memoryOperation(slot.instruction);
+  if (!memOp) return {};
+
+  const address = slot.address ?? toByteAddress(0);
+  const widthLabel = MEMORY_WIDTH_LABELS[memOp.width];
+  const widthName = MEMORY_WIDTH_NAMES[memOp.width];
+  const access = classifyDataAccess(address, memOp.width, memOp.direction);
+  if (!access.ok) return memoryError(access.kind, access.message);
+  if (address % memOp.width !== 0) {
+    return memoryError(
+      "mem-misaligned",
+      `${slot.instruction.text} cannot ${memOp.direction} misaligned ${widthName} address ${address}.`,
+    );
+  }
+
+  if (memOp.direction === "load") {
+    // classifyDataAccess only admits loads to RAM, so no device cases remain here.
+    const rawValue = readUnsignedValue(memory, address, memOp.width);
+    const loadedValue = memOp.signed ? signExtend(rawValue, memOp.width) : toInt32(rawValue);
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
@@ -508,174 +519,59 @@ function runMemory(
       instructionId: slot.instructionId,
       kind: "memory",
       label: "load",
-      message: `${slot.instruction.text} reads byte at byte address ${address} = ${loadedValue}.`,
+      message: `${slot.instruction.text} reads ${widthName} at byte address ${address} = ${loadedValue}.`,
       detail: { address, value: loadedValue },
     });
-    return { loadedValue, memoryEffect: { direction: "load", width: "b", address, value: rawValue } };
+    return { loadedValue, memoryEffect: { direction: "load", width: widthLabel, address, value: rawValue } };
   }
-  if (slot.instruction.op === "lh" || slot.instruction.op === "lhu") {
-    const address = slot.address ?? toByteAddress(0);
-    const access = classifyDataAccess(address, 2, "load");
-    if (!access.ok) return memoryError(access.kind, access.message);
-    if (!isAlignedHalfwordAddress(address)) {
-      return memoryError(
-        "mem-misaligned",
-        `${slot.instruction.text} cannot load misaligned halfword address ${address}.`,
-      );
-    }
-    if (access.kind !== "ram") {
-      return memoryError("mmio-violation", `${slot.instruction.text} cannot load from device byte address ${address}.`);
-    }
-    const rawValue = readUnsignedHalfword(memory, address);
-    const loadedValue =
-      slot.instruction.op === "lh" ? readSignedHalfword(memory, address) : readUnsignedHalfword(memory, address);
+
+  const value = toUint32(slot.storeValue ?? 0);
+  const storedBits = memOp.width === 4 ? value : value & ((1 << (memOp.width * 8)) - 1);
+  const memoryEffect: MemoryEffect = { direction: "store", width: widthLabel, address, value: storedBits };
+
+  if (access.kind === "uart") {
+    const byte = toByteValue(value);
+    consoleOutput.push(byte);
     events.push({
       id: eventId(cycle, "memory", slot.instructionId),
       cycle,
       seqId: slot.seqId,
       instructionId: slot.instructionId,
       kind: "memory",
-      label: "load",
-      message: `${slot.instruction.text} reads halfword at byte address ${address} = ${loadedValue}.`,
-      detail: { address, value: loadedValue },
-    });
-    return { loadedValue, memoryEffect: { direction: "load", width: "h", address, value: rawValue } };
-  }
-  if (slot.instruction.op === "lw") {
-    const address = slot.address ?? toByteAddress(0);
-    const access = classifyDataAccess(address, 4, "load");
-    if (!access.ok) return memoryError(access.kind, access.message);
-    if (!isAlignedWordAddress(address)) {
-      return memoryError("mem-misaligned", `${slot.instruction.text} cannot load misaligned word address ${address}.`);
-    }
-    if (access.kind !== "ram") {
-      return memoryError("mmio-violation", `${slot.instruction.text} cannot load from device byte address ${address}.`);
-    }
-    const loadedValue = readWord(memory, address);
-    events.push({
-      id: eventId(cycle, "memory", slot.instructionId),
-      cycle,
-      seqId: slot.seqId,
-      instructionId: slot.instructionId,
-      kind: "memory",
-      label: "load",
-      message: `${slot.instruction.text} reads word at byte address ${address} = ${loadedValue}.`,
-      detail: { address, value: loadedValue },
-    });
-    return { loadedValue, memoryEffect: { direction: "load", width: "w", address, value: toUint32(loadedValue) } };
-  }
-  if (slot.instruction.op === "sb") {
-    const address = slot.address ?? toByteAddress(0);
-    const access = classifyDataAccess(address, 1, "store");
-    if (!access.ok) return memoryError(access.kind, access.message);
-    const after = toByteValue(slot.storeValue ?? 0);
-    const memoryEffect: MemoryEffect = { direction: "store", width: "b", address, value: after };
-    if (access.kind === "uart") {
-      consoleOutput.push(after);
-      events.push({
-        id: eventId(cycle, "memory", slot.instructionId),
-        cycle,
-        seqId: slot.seqId,
-        instructionId: slot.instructionId,
-        kind: "memory",
-        label: "uart",
-        message: `${slot.instruction.text} writes byte ${after} to UART data register.`,
-        detail: { address, value: after },
-      });
-      return { memoryEffect };
-    }
-    const before = memory[address] ?? toByteValue(0);
-    memory[address] = after;
-    diffs.push({ address, before, after });
-    events.push({
-      id: eventId(cycle, "memory", slot.instructionId),
-      cycle,
-      seqId: slot.seqId,
-      instructionId: slot.instructionId,
-      kind: "memory",
-      label: "store",
-      message: `${slot.instruction.text} writes byte at byte address ${address}.`,
-      detail: { address, value: after },
+      label: "uart",
+      message: `${slot.instruction.text} writes byte ${byte} to UART data register.`,
+      detail: { address, value: byte },
     });
     return { memoryEffect };
   }
-  if (slot.instruction.op === "sh") {
-    const address = slot.address ?? toByteAddress(0);
-    const access = classifyDataAccess(address, 2, "store");
-    if (!access.ok) return memoryError(access.kind, access.message);
-    if (!isAlignedHalfwordAddress(address)) {
-      return memoryError(
-        "mem-misaligned",
-        `${slot.instruction.text} cannot store misaligned halfword address ${address}.`,
-      );
+
+  if (access.kind === "exit") {
+    const exitRequest = decodeExitRequest(value);
+    if (!exitRequest) {
+      return memoryError("mmio-violation", `${slot.instruction.text} stores an undefined exit device value ${value}.`);
     }
-    const value = toUint32(slot.storeValue ?? 0);
-    if (access.kind === "uart") {
-      return memoryError("mmio-violation", `${slot.instruction.text} cannot store halfword to UART data register.`);
-    }
-    const memoryEffect: MemoryEffect = { direction: "store", width: "h", address, value: value & 0xffff };
-    const bytes = [toByteValue(value), toByteValue(value >>> 8)];
-    bytes.forEach((after, offset) => {
-      const byteAddress = toByteAddress(address + offset);
-      const before = memory[byteAddress] ?? toByteValue(0);
-      memory[byteAddress] = after;
-      diffs.push({ address: byteAddress, before, after });
-    });
-    events.push({
-      id: eventId(cycle, "memory", slot.instructionId),
-      cycle,
-      seqId: slot.seqId,
-      instructionId: slot.instructionId,
-      kind: "memory",
-      label: "store",
-      message: `${slot.instruction.text} writes halfword at byte address ${address}.`,
-      detail: { address, value: value & 0xffff },
-    });
-    return { memoryEffect };
+    events.push(deviceStoreEvent(cycle, slot, "exit", address, value));
+    return { exitRequest, memoryEffect };
   }
-  if (slot.instruction.op === "sw") {
-    const address = slot.address ?? toByteAddress(0);
-    const access = classifyDataAccess(address, 4, "store");
-    if (!access.ok) return memoryError(access.kind, access.message);
-    if (!isAlignedWordAddress(address)) {
-      return memoryError("mem-misaligned", `${slot.instruction.text} cannot store misaligned word address ${address}.`);
-    }
-    const value = toUint32(slot.storeValue ?? 0);
-    if (access.kind === "uart") {
-      return memoryError("mmio-violation", `${slot.instruction.text} cannot store word to UART data register.`);
-    }
-    const memoryEffect: MemoryEffect = { direction: "store", width: "w", address, value };
-    if (access.kind === "exit") {
-      const exitRequest = decodeExitRequest(value);
-      if (!exitRequest) {
-        return memoryError(
-          "mmio-violation",
-          `${slot.instruction.text} stores an undefined exit device value ${value}.`,
-        );
-      }
-      events.push(deviceStoreEvent(cycle, slot, "exit", address, value));
-      return { exitRequest, memoryEffect };
-    }
-    const bytes = [toByteValue(value), toByteValue(value >>> 8), toByteValue(value >>> 16), toByteValue(value >>> 24)];
-    bytes.forEach((after, offset) => {
-      const byteAddress = toByteAddress(address + offset);
-      const before = memory[byteAddress] ?? toByteValue(0);
-      memory[byteAddress] = after;
-      diffs.push({ address: byteAddress, before, after });
-    });
-    events.push({
-      id: eventId(cycle, "memory", slot.instructionId),
-      cycle,
-      seqId: slot.seqId,
-      instructionId: slot.instructionId,
-      kind: "memory",
-      label: "store",
-      message: `${slot.instruction.text} writes word at byte address ${address}.`,
-      detail: { address, value },
-    });
-    return { memoryEffect };
+
+  for (let offset = 0; offset < memOp.width; offset += 1) {
+    const byteAddress = toByteAddress(address + offset);
+    const before = memory[byteAddress] ?? toByteValue(0);
+    const after = toByteValue(value >>> (offset * 8));
+    memory[byteAddress] = after;
+    diffs.push({ address: byteAddress, before, after });
   }
-  return {};
+  events.push({
+    id: eventId(cycle, "memory", slot.instructionId),
+    cycle,
+    seqId: slot.seqId,
+    instructionId: slot.instructionId,
+    kind: "memory",
+    label: "store",
+    message: `${slot.instruction.text} writes ${widthName} at byte address ${address}.`,
+    detail: { address, value: storedBits },
+  });
+  return { memoryEffect };
 }
 
 function runExecute(slot: StageSlot | null): Partial<StageSlot> | null {
@@ -877,21 +773,11 @@ function shouldStallForDataHazard(id: StageSlot | null, writers: Array<StageSlot
 
 function writebackValue(slot: StageSlot | null): Int32 | null {
   if (!slot) return null;
-  if (isLoadInstruction(slot.instruction)) return slot.loadedValue ?? null;
+  if (memoryOperation(slot.instruction)?.direction === "load") return slot.loadedValue ?? null;
   if (slot.instruction.op === "jal" || slot.instruction.op === "jalr") {
     return slot.result ?? toInt32(slot.pc + INSTRUCTION_SIZE_BYTES);
   }
   return slot.result ?? null;
-}
-
-function isLoadInstruction(instruction: Instruction): boolean {
-  return (
-    instruction.op === "lb" ||
-    instruction.op === "lbu" ||
-    instruction.op === "lh" ||
-    instruction.op === "lhu" ||
-    instruction.op === "lw"
-  );
 }
 
 function buildTimeline(cycle: number, stages: StageSlots, events: PipelineEvent[]): TimelineCell[] {
@@ -1021,40 +907,17 @@ function deviceStoreEvent(
   };
 }
 
-function readWord(memory: ByteMemory, address: ByteAddress): Int32 {
-  const value =
-    ((memory[address] ?? 0) & 0xff) |
-    (((memory[address + 1] ?? 0) & 0xff) << 8) |
-    (((memory[address + 2] ?? 0) & 0xff) << 16) |
-    (((memory[address + 3] ?? 0) & 0xff) << 24);
-  return toInt32(value);
+function readUnsignedValue(memory: ByteMemory, address: ByteAddress, width: 1 | 2 | 4): number {
+  let value = 0;
+  for (let offset = 0; offset < width; offset += 1) {
+    value |= ((memory[address + offset] ?? 0) & 0xff) << (offset * 8);
+  }
+  return toUint32(value);
 }
 
-function readSignedByte(memory: ByteMemory, address: ByteAddress): Int32 {
-  const value = (memory[address] ?? 0) & 0xff;
-  return toInt32((value << 24) >> 24);
-}
-
-function readUnsignedByte(memory: ByteMemory, address: ByteAddress): Int32 {
-  return toInt32((memory[address] ?? 0) & 0xff);
-}
-
-function readSignedHalfword(memory: ByteMemory, address: ByteAddress): Int32 {
-  const value = ((memory[address] ?? 0) & 0xff) | (((memory[address + 1] ?? 0) & 0xff) << 8);
-  return toInt32((value << 16) >> 16);
-}
-
-function readUnsignedHalfword(memory: ByteMemory, address: ByteAddress): Int32 {
-  const value = ((memory[address] ?? 0) & 0xff) | (((memory[address + 1] ?? 0) & 0xff) << 8);
-  return toInt32(value);
-}
-
-function isAlignedWordAddress(address: ByteAddress): boolean {
-  return address % 4 === 0;
-}
-
-function isAlignedHalfwordAddress(address: ByteAddress): boolean {
-  return address % 2 === 0;
+function signExtend(value: number, width: 1 | 2 | 4): Int32 {
+  const shift = 32 - width * 8;
+  return toInt32(shift === 0 ? value : (value << shift) >> shift);
 }
 
 function errorEvent(
