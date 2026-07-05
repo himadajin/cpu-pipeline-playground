@@ -103,9 +103,9 @@ describe("App", () => {
     }
     await userEvent.click(screen.getByRole("button", { name: "Memory" }));
 
-    expect(container).toHaveTextContent("[2147549184] 0x000000ff");
+    expect(container).toHaveTextContent("[0x80010000] 0x000000ff");
     expect(container).toHaveTextContent("bytes 0xff 0x00 0x00 0x00");
-    expect(container).toHaveTextContent("[2147549184]: 0x00 -> 0xff");
+    expect(container).toHaveTextContent("[0x80010000]: 0x00 -> 0xff");
   });
 
   it("collapses dock areas and reopens them from rails", async () => {

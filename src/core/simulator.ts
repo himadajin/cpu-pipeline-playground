@@ -237,7 +237,7 @@ export function stepSimulation(state: SimulationState): SimulationState {
       instructionId: latches.idEx.instructionId,
       kind: "branch",
       label: "branch",
-      message: `${latches.idEx.text} redirects fetch to byte address ${exOutput?.nextPc ?? 0}.`,
+      message: `${latches.idEx.text} redirects fetch to byte address ${toHex32(exOutput?.nextPc ?? 0)}.`,
       detail: { target: exOutput?.nextPc ?? 0 },
     });
     for (const flushed of [ifSlot, latches.ifId]) {
@@ -344,8 +344,8 @@ function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress, seqId
       instructionId: -1,
       pc,
       instructionWord: null,
-      text: `misaligned fetch at ${pc}`,
-      error: { kind: "fetch-misaligned", message: `Misaligned fetch at byte address ${pc}.` },
+      text: `misaligned fetch at ${toHex32(pc)}`,
+      error: { kind: "fetch-misaligned", message: `Misaligned fetch at byte address ${toHex32(pc)}.` },
     };
   }
   if (!isRamRange(pc, INSTRUCTION_SIZE_BYTES)) {
@@ -354,8 +354,8 @@ function fetchInstruction(executionImage: ExecutionImage, pc: ByteAddress, seqId
       instructionId: -1,
       pc,
       instructionWord: null,
-      text: `unmapped fetch at ${pc}`,
-      error: { kind: "fetch-unmapped", message: `Unmapped fetch at byte address ${pc}.` },
+      text: `unmapped fetch at ${toHex32(pc)}`,
+      error: { kind: "fetch-unmapped", message: `Unmapped fetch at byte address ${toHex32(pc)}.` },
     };
   }
   const fetched = executionImage.instructionMemory[pc];
@@ -493,7 +493,7 @@ function runMemory(
   if (address % memOp.width !== 0) {
     return memoryError(
       "mem-misaligned",
-      `${slot.text} cannot ${memOp.direction} misaligned ${widthName} address ${address}.`,
+      `${slot.text} cannot ${memOp.direction} misaligned ${widthName} address ${toHex32(address)}.`,
     );
   }
 
@@ -508,7 +508,7 @@ function runMemory(
       instructionId: slot.instructionId,
       kind: "memory",
       label: "load",
-      message: `${slot.text} reads ${widthName} at byte address ${address} = ${loadedValue}.`,
+      message: `${slot.text} reads ${widthName} at byte address ${toHex32(address)} = ${loadedValue}.`,
       detail: { address, value: loadedValue },
     });
     return { loadedValue, memoryEffect: { direction: "load", width: widthLabel, address, value: rawValue } };
@@ -537,7 +537,7 @@ function runMemory(
   if (access.kind === "exit") {
     const exitRequest = decodeExitRequest(value);
     if (!exitRequest) {
-      return memoryError("mmio-violation", `${slot.text} stores an undefined exit device value ${value}.`);
+      return memoryError("mmio-violation", `${slot.text} stores an undefined exit device value ${toHex32(value)}.`);
     }
     events.push(deviceStoreEvent(cycle, slot, "exit", address, value));
     return { exitRequest, memoryEffect };
@@ -557,7 +557,7 @@ function runMemory(
     instructionId: slot.instructionId,
     kind: "memory",
     label: "store",
-    message: `${slot.text} writes ${widthName} at byte address ${address}.`,
+    message: `${slot.text} writes ${widthName} at byte address ${toHex32(address)}.`,
     detail: { address, value: storedBits },
   });
   return { memoryEffect };
@@ -849,7 +849,11 @@ function classifyDataAccess(address: ByteAddress, width: 1 | 2 | 4, direction: M
     if (unsigned === RASK_UART_DATA_ADDRESS && direction === "store" && width === 1) {
       return { ok: true, kind: "uart" };
     }
-    return { ok: false, kind: "mmio-violation", message: `Invalid UART ${direction} at byte address ${unsigned}.` };
+    return {
+      ok: false,
+      kind: "mmio-violation",
+      message: `Invalid UART ${direction} at byte address ${toHex32(unsigned)}.`,
+    };
   }
   if (unsigned >= RASK_EXIT_REGION_BASE && unsigned < RASK_EXIT_REGION_LIMIT_EXCLUSIVE) {
     if (unsigned === RASK_EXIT_DEVICE_ADDRESS && direction === "store" && width === 4) {
@@ -858,10 +862,10 @@ function classifyDataAccess(address: ByteAddress, width: 1 | 2 | 4, direction: M
     return {
       ok: false,
       kind: "mmio-violation",
-      message: `Invalid exit device ${direction} at byte address ${unsigned}.`,
+      message: `Invalid exit device ${direction} at byte address ${toHex32(unsigned)}.`,
     };
   }
-  return { ok: false, kind: "mem-unmapped", message: `Unmapped ${direction} at byte address ${unsigned}.` };
+  return { ok: false, kind: "mem-unmapped", message: `Unmapped ${direction} at byte address ${toHex32(unsigned)}.` };
 }
 
 function isRamRange(address: number, width: 1 | 2 | 4): boolean {
@@ -892,7 +896,7 @@ function deviceStoreEvent(
     instructionId: slot.instructionId,
     kind: "memory",
     label: device,
-    message: `${slot.text} writes ${toUint32(value)} to ${device} device register.`,
+    message: `${slot.text} writes ${toHex32(value)} to ${device} device register.`,
     detail: { address, value: toUint32(value) },
   };
 }

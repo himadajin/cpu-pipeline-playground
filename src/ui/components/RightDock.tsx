@@ -178,7 +178,7 @@ function MemoryPanel({ current }: { current: CycleSnapshot }) {
           <h2>Memory Diffs</h2>
           {current.memoryDiffs.map((diff) => (
             <div className="diff-row" key={diff.address}>
-              [{diff.address}]: {formatByte(diff.before)} {"->"} {formatByte(diff.after)}
+              [{toHex32(diff.address)}]: {formatByte(diff.before)} {"->"} {formatByte(diff.after)}
             </div>
           ))}
         </div>
@@ -190,7 +190,8 @@ function MemoryPanel({ current }: { current: CycleSnapshot }) {
         ) : (
           entries.map(({ address, bytes, value }) => (
             <div className="diff-row" key={address}>
-              [{address}] {toHex32(value)} <span className="muted">bytes {bytes.map(formatByte).join(" ")}</span>
+              [{toHex32(address)}] {toHex32(value)}{" "}
+              <span className="muted">bytes {bytes.map(formatByte).join(" ")}</span>
             </div>
           ))
         )}
