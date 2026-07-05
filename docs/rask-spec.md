@@ -127,13 +127,15 @@ MEM/WB に `wbSel` は存在しない。MEM が `wbSel` を解決して `wbValue
 - `stall` のみ成立時: PC と IF/ID を凍結し、ID/EX にバブルを注入する。
 - いずれも不成立時: 各ラッチを上流ステージの計算結果で更新し、PC を `PC + 4` に更新する。
 
+program がロードされた RAM 範囲を instruction image と呼ぶ。instruction image の終端を越えた、またはプログラム語が存在しない RAM 番地への、フェッチは命令を供給せず、IF stage slot は空のままとなる。このとき PC は更新されない。これは PC + 4 規則の唯一の例外である。IF stage slot と全ラッチが空になった時点で、simulator は terminal record を出さずに停止する。これを pipeline drain 停止と呼ぶ。
+
 ## 5. パイプラインステージの責務
 
 各ステージは入力ラッチと自前の資源から出力を計算する純関数であり、フェーズ 2 で並行に評価される。
 
 全ステージ共通の規則として、入力が bubble のとき出力も bubble である。入力の `errorKind != none` のとき、ステージは作用を計算せず、共通メタデータのみを下流へ通す。ID はこのとき `regWrite = false`、`redirectKind = none`、`memOp = none` としてデコードを抑止する。
 
-IF は PC で命令ポートを読み、IF stage slot へ `instr`、`pc`、`seqId` を書く。下流が受理できる cycle では、次 cycle の IF/ID へその命令が進む。`stall` による凍結中は PC、IF stage slot、IF/ID が保持され、保持中の dynamic instruction は occupancy table で `F` として見え続ける。凍結中に新しい `seqId` は採番されない。`redirect` により IF/ID がバブル化された cycle では IF stage slot も破棄され、その cycle のフェッチは受理されない。PC が未マップまたはミスアライン、つまり `PC[1:0] != 0` のときは読みを行わず、`errorKind` を設定する。
+IF は PC で命令ポートを読み、IF stage slot へ `instr`、`pc`、`seqId` を書く。下流が受理できる cycle では、次 cycle の IF/ID へその命令が進む。`stall` による凍結中は PC、IF stage slot、IF/ID が保持され、保持中の dynamic instruction は occupancy table で `F` として見え続ける。凍結中に新しい `seqId` は採番されない。`redirect` により IF/ID がバブル化された cycle では IF stage slot も破棄され、その cycle のフェッチは受理されない。PC が未マップまたはミスアライン、つまり `PC[1:0] != 0` のときは読みを行わず、`errorKind` を設定する。PC が instruction image の外の RAM 番地を指すときは 4 章の drain 規則に従い、命令を供給しない。
 
 ID は `instr` をデコードし、レジスタファイルを読み、ID/EX へ `rs1Val`、`rs2Val`、`imm`、`rd`、`ctrl` を書く。未定義命令および `ecall` は `errorKind` を設定する。レジスタファイルの読みは現在の値、つまりこの cycle の state update で WB の書き込みが適用される前の値である。同一 cycle の書き読みが存在しないことは 6.1 の stall 条件が前提としており、WB に書き手がいる間は読み手が ID に到達しない。
 
@@ -168,6 +170,8 @@ ID 段の命令が `rs1` または `rs2` を使用し、ID/EX・EX/MEM・MEM/WB 
 - 未マップアドレスからのフェッチ、ミスアラインアドレスからのフェッチ、つまり `PC[1:0] != 0` のフェッチ。IF で検出する。
 - 未定義命令、`ecall`。ID で検出する。
 - 未マップ・ミスアラインアドレスへのロード/ストア、デバイスレジスタへのロード、定義外のデバイス領域へのアクセス。MEM で検出する。
+
+RAM 内であっても instruction image の外である番地へのフェッチはエラーではなく、4 章の drain 規則に従い命令を供給しない。
 
 error condition を検出しても、その場で error report や error termination を行ってはならない。`rask` は predict-not-taken により間違ったパスの命令を日常的にフェッチするため、検出時の error termination はフラッシュされる運命の命令、たとえばプログラム末尾の向こう側のフェッチをエラーと誤認し、正しい program を異常終了させる。
 
@@ -298,6 +302,8 @@ error report は、retire 時報告を採用し、検出時の error termination
 メモリ構成は、単一アドレス空間・単一メモリ・2 ポートを採用し、物理的に分離されたハーバード構成を不採用とした。理由は、構造ハザードの排除は 2 ポートで達成でき、単一アドレス空間は QEMU と一致することである。物理分離はロード規約と oracle との変換層を増やす。
 
 レジスタ初期値は、全 0 の決め打ちを採用し、不定を不採用とした。理由は、不定値が「同一入力なら同一出力」という golden 比較の前提を壊すことである。
+
+instruction image の外のフェッチは、命令を供給せず pipeline drain 停止に至る方式を採用し、ゼロ埋め RAM をフェッチして `undef-instr` エラーとする方式を不採用とした。理由は、後者では終了ストアを持たないプログラムがすべて ERROR 終了となり、playground の主目的である pipeline 観察の教材プログラムが軒並み異常終了扱いになることである。
 
 exit timing は、終了デバイスへのストアの exit 確定を retire 時とし、MEM での即時 exit を不採用とした。理由は、MEM で即 exit すると終了ストア自身が retire log に載らず、retire log は実行の完全な記録であるという I1 の帰結に穴が開くことである。
 
