@@ -706,6 +706,27 @@ addi x3, x2, 1
     expect(formatRetireLog(exit.current).split("\n").at(-1)).toBe("EXIT 0");
   });
 
+  it("classifies undefined accesses inside device regions as mmio violations and outside as unmapped", () => {
+    const errorKindFor = (source: string, registers: Record<number, number>) => {
+      const simulation = runSimulation(createSimulation(assembled(source), { registers }));
+      expect(simulation.current.terminalRecord?.kind).toBe("error");
+      return simulation.current.terminalRecord?.kind === "error"
+        ? simulation.current.terminalRecord.errorKind
+        : undefined;
+    };
+
+    // Inside the UART region but not a defined register access.
+    expect(errorKindFor("sw x2, 0(x1)\n", { 1: 0x10000004, 2: 1 })).toBe("mmio-violation");
+    expect(errorKindFor("sb x2, 0(x1)\n", { 1: 0x10000fff, 2: 1 })).toBe("mmio-violation");
+    expect(errorKindFor("lb x2, 0(x1)\n", { 1: 0x10000008 })).toBe("mmio-violation");
+    // Inside the exit region but not the exit register.
+    expect(errorKindFor("sw x2, 0(x1)\n", { 1: 0x00100004, 2: 0x5555 })).toBe("mmio-violation");
+    // Just past the region limits, and below the exit region: unmapped.
+    expect(errorKindFor("sb x2, 0(x1)\n", { 1: 0x10001000, 2: 1 })).toBe("mem-unmapped");
+    expect(errorKindFor("sb x2, 0(x1)\n", { 1: 0x000fffff, 2: 1 })).toBe("mem-unmapped");
+    expect(errorKindFor("sb x2, 0(x1)\n", { 1: 0x00101000, 2: 1 })).toBe("mem-unmapped");
+  });
+
   it("exits with the failure code from the high half of a 0x3333 exit store", () => {
     const simulation = runSimulation(
       createSimulation(assembled("sw x2, 0(x1)\n"), { registers: { 1: 0x00100000, 2: 0x00013333 } }),

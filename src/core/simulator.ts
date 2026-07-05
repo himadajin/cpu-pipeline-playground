@@ -30,7 +30,16 @@ import type {
 import { createExecutionImage } from "./assembler";
 import { decodeInstruction } from "./instructionCodec";
 import { destinationRegister, sourceRegisters } from "./instructionMetadata";
-import { RASK_EXIT_DEVICE_ADDRESS, RASK_RAM_BASE, RASK_RAM_LIMIT_EXCLUSIVE, RASK_UART_DATA_ADDRESS } from "./types";
+import {
+  RASK_EXIT_DEVICE_ADDRESS,
+  RASK_EXIT_REGION_BASE,
+  RASK_EXIT_REGION_LIMIT_EXCLUSIVE,
+  RASK_RAM_BASE,
+  RASK_RAM_LIMIT_EXCLUSIVE,
+  RASK_UART_DATA_ADDRESS,
+  RASK_UART_REGION_BASE,
+  RASK_UART_REGION_LIMIT_EXCLUSIVE,
+} from "./types";
 import {
   toHex32,
   toByteAddress,
@@ -970,12 +979,16 @@ type MemoryAccess =
 function classifyDataAccess(address: ByteAddress, width: 1 | 2 | 4, direction: MemoryDirection): MemoryAccess {
   const unsigned = toUint32(address);
   if (isRamRange(unsigned, width)) return { ok: true, kind: "ram" };
-  if (unsigned === RASK_UART_DATA_ADDRESS) {
-    if (direction === "store" && width === 1) return { ok: true, kind: "uart" };
+  if (unsigned >= RASK_UART_REGION_BASE && unsigned < RASK_UART_REGION_LIMIT_EXCLUSIVE) {
+    if (unsigned === RASK_UART_DATA_ADDRESS && direction === "store" && width === 1) {
+      return { ok: true, kind: "uart" };
+    }
     return { ok: false, kind: "mmio-violation", message: `Invalid UART ${direction} at byte address ${unsigned}.` };
   }
-  if (unsigned === RASK_EXIT_DEVICE_ADDRESS) {
-    if (direction === "store" && width === 4) return { ok: true, kind: "exit" };
+  if (unsigned >= RASK_EXIT_REGION_BASE && unsigned < RASK_EXIT_REGION_LIMIT_EXCLUSIVE) {
+    if (unsigned === RASK_EXIT_DEVICE_ADDRESS && direction === "store" && width === 4) {
+      return { ok: true, kind: "exit" };
+    }
     return {
       ok: false,
       kind: "mmio-violation",
