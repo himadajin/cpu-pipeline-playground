@@ -792,6 +792,82 @@ addi x1, x0, 1
     ).toEqual([]);
   });
 
+  it("attaches retire events to W cells and branch events to X cells in the same cycle", () => {
+    const simulation = runSimulation(
+      createSimulation(
+        assembled(`
+addi x5, x0, 3
+add x6, x5, x5
+beq x6, x6, target
+addi x7, x0, 1
+target:
+addi x8, x0, 2
+`),
+      ),
+    );
+    const expectedStages = { retire: "WB", branch: "EX", memory: "MEM", stall: "ID" } as const;
+    const checked: Record<string, number> = { retire: 0, branch: 0, stall: 0 };
+
+    for (const snapshot of simulation.history) {
+      for (const event of snapshot.events) {
+        const expected = expectedStages[event.kind as keyof typeof expectedStages];
+        if (!expected) continue;
+        const cell = snapshot.timeline.find((candidate) => candidate.seqId === event.seqId);
+        expect(cell?.stage).toBe(expected);
+        expect(cell?.cycle).toBe(event.cycle);
+        checked[event.kind] = (checked[event.kind] ?? 0) + 1;
+      }
+    }
+    expect(checked.retire).toBeGreaterThan(0);
+    expect(checked.branch).toBeGreaterThan(0);
+    expect(checked.stall).toBeGreaterThan(0);
+  });
+
+  it("has a timeline cell for every event so no event is orphaned", () => {
+    const programs = [
+      "addi x5, x0, 3\nadd x6, x5, x5\nbeq x6, x6, target\naddi x7, x0, 1\ntarget:\naddi x8, x0, 2\n",
+      "lui x1, 0x00100\nlui x2, 0x5\naddi x2, x2, 0x555\nsw x2, 0(x1)\naddi x3, x0, 1\naddi x4, x0, 2\n",
+      "ecall\naddi x1, x0, 1\n",
+    ];
+    for (const source of programs) {
+      const simulation = runSimulation(createSimulation(assembled(source)));
+      for (const snapshot of simulation.history) {
+        for (const event of snapshot.events) {
+          expect(event.cycle).toBe(snapshot.cycle);
+          const cell = snapshot.timeline.find((candidate) => candidate.seqId === event.seqId);
+          expect(cell, `event ${event.id} (${event.kind}) has no cell`).toBeDefined();
+        }
+      }
+    }
+  });
+
+  it("keeps exactly one W per retired instruction when an exit store terminates the run", () => {
+    const simulation = runSimulation(
+      createSimulation(
+        assembled(`
+lui x1, 0x00100
+lui x2, 0x5
+addi x2, x2, 0x555
+sw x2, 0(x1)
+addi x3, x0, 1
+addi x4, x0, 2
+`),
+      ),
+    );
+
+    expect(simulation.current.terminalRecord).toEqual({ kind: "exit", code: 0 });
+    const rows = formatPipelineOccupancyTable(simulation.current).split("\n");
+    const retiredRows = rows.filter((row) => row.endsWith("W"));
+    expect(retiredRows).toHaveLength(simulation.current.retireLog.length);
+    for (const row of rows) {
+      const wCount = row.split("W").length - 1;
+      expect(wCount, `row "${row}" must have at most one W`).toBeLessThanOrEqual(1);
+      if (wCount === 1) expect(row.endsWith("W"), `row "${row}" must end with its W`).toBe(true);
+    }
+    const discardedRows = rows.filter((row) => !row.endsWith("W"));
+    expect(discardedRows.length).toBeGreaterThan(0);
+  });
+
   it("steps backward through history", async () => {
     const { stepBackSimulation } = await import("../../src/core");
     const program = assembled("addi x1, x0, 1\n");
